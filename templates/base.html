@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>{% block title %}SAFE STAKE{% endblock %}</title>
+    <link rel="icon" href="/static/img/safestake-icon.png" />
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@600;700;800&family=JetBrains+Mono:wght@500&display=swap"
       rel="stylesheet"
@@ -32,17 +33,16 @@
     <header class="border-b border-white/10">
       <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
         <div class="flex items-center gap-3">
-          <div
-            class="w-10 h-10 rounded-full border border-emerald-400/60 flex items-center justify-center glow"
-          >
-            <span class="text-emerald-400 font-title text-lg">S</span>
-          </div>
-          <div>
-            <p class="font-title text-sm text-gray-400">PLATAFORMA</p>
-            <p class="font-title text-xl">
-              SAFE <span class="text-emerald-400">STAKE</span>
-            </p>
-          </div>
+          <img
+            src="/static/img/safestake-icon.png"
+            alt="SAFE STAKE"
+            class="w-10 h-10"
+          />
+          <img
+            src="/static/img/safestake-text.png"
+            alt="SAFE STAKE"
+            class="h-8 hidden sm:block"
+          />
         </div>
 
         <nav class="hidden md:flex items-center gap-8 text-sm text-gray-300">
