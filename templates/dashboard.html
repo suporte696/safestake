@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+    <div>
+      <p class="font-title text-xs text-emerald-400 tracking-[0.3em]">MINHA CONTA</p>
+      <h1 class="font-title text-3xl uppercase">Dashboard do Apoiador</h1>
+      <p class="text-gray-300">Controle sua carteira e acompanhe a performance dos seus stakes.</p>
+    </div>
+    <button class="px-5 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition">
+      Adicionar saldo
+    </button>
+  </div>
+
+  <div class="grid gap-6 md:grid-cols-2">
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <p class="text-xs text-gray-400">Saldo disponível</p>
+      <p class="text-3xl font-mono text-emerald-400 mt-2">
+        R$ {{ "%.2f"|format(wallet.saldo_disponivel) }}
+      </p>
+    </div>
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <p class="text-xs text-gray-400">Saldo em jogo</p>
+      <p class="text-3xl font-mono text-white mt-2">
+        R$ {{ "%.2f"|format(wallet.saldo_em_jogo) }}
+      </p>
+    </div>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-title text-xl uppercase">Histórico de Stakes</h2>
+      <span class="text-xs text-gray-400">Últimas 10 operações</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Torneio</th>
+            <th class="py-3">Player</th>
+            <th class="py-3">Investimento</th>
+            <th class="py-3">Cota</th>
+            <th class="py-3">Resultado</th>
+            <th class="py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for stake in stakes %}
+          <tr class="hover:bg-white/5">
+            <td class="py-3">{{ stake.tournament }}</td>
+            <td class="py-3">{{ stake.player }}</td>
+            <td class="py-3 font-mono">R$ {{ "%.2f"|format(stake.valor) }}</td>
+            <td class="py-3 font-mono">{{ stake.pct }}%</td>
+            <td class="py-3 font-mono text-emerald-400">R$ {{ "%.2f"|format(stake.resultado) }}</td>
+            <td class="py-3">
+              <span
+                class="px-3 py-1 rounded-full text-xs border border-white/10 {% if stake.status == 'Jogando' %}text-emerald-400{% else %}text-gray-300{% endif %}"
+              >
+                {{ stake.status }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}SAFE STAKE{% endblock %}</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Montserrat:wght@600;700;800&family=JetBrains+Mono:wght@500&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      .font-title {
+        font-family: "Montserrat", sans-serif;
+        letter-spacing: 0.08em;
+      }
+      .font-body {
+        font-family: "Inter", sans-serif;
+      }
+      .font-mono {
+        font-family: "JetBrains Mono", monospace;
+      }
+      .glow {
+        box-shadow: 0 0 18px rgba(0, 229, 96, 0.15);
+      }
+    </style>
+  </head>
+  <body class="bg-[#050505] text-white font-body min-h-screen">
+    <header class="border-b border-white/10">
+      <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div
+            class="w-10 h-10 rounded-full border border-emerald-400/60 flex items-center justify-center glow"
+          >
+            <span class="text-emerald-400 font-title text-lg">S</span>
+          </div>
+          <div>
+            <p class="font-title text-sm text-gray-400">PLATAFORMA</p>
+            <p class="font-title text-xl">
+              SAFE <span class="text-emerald-400">STAKE</span>
+            </p>
+          </div>
+        </div>
+
+        <nav class="hidden md:flex items-center gap-8 text-sm text-gray-300">
+          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
+          <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
+          <a class="hover:text-emerald-400 transition" href="#">Ranking</a>
+        </nav>
+
+        <div class="flex items-center gap-4">
+          <div class="hidden sm:flex flex-col text-right text-xs text-gray-400">
+            <span>Carteira</span>
+            <span class="font-mono text-emerald-400 text-sm">R$ 1.540,75</span>
+          </div>
+          <button
+            class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+          >
+            Perfil
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-6 py-10">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="border-t border-white/10 py-8">
+      <div class="max-w-6xl mx-auto px-6 text-sm text-gray-400 flex flex-col md:flex-row items-center justify-between gap-4">
+        <p>SAFE STAKE © 2026. Todos os direitos reservados.</p>
+        <p class="text-emerald-400 font-title text-xs">DARK · BOLD · HIGH-TECH</p>
+      </div>
+    </footer>
+  </body>
+</html>

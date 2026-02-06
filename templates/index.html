@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Marketplace | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="space-y-10">
+  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+    <div class="space-y-4">
+      <p class="font-title text-xs text-emerald-400 tracking-[0.3em]">SAFE STAKE</p>
+      <h1 class="font-title text-3xl md:text-4xl uppercase">
+        Ofertas de staking <span class="text-emerald-400">ativas</span>
+      </h1>
+      <p class="text-gray-300 max-w-xl">
+        Apoie jogadores profissionais, compre cotas com markup transparente e acompanhe seus resultados em tempo real.
+      </p>
+    </div>
+    <div class="flex items-center gap-4">
+      <button class="px-5 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30">
+        Criar oferta
+      </button>
+      <button class="px-5 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition">
+        Ver histórico
+      </button>
+    </div>
+  </div>
+
+  <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+    {% for offer in offers %}
+    <article
+      class="bg-black border border-white/10 rounded-2xl p-6 space-y-5 transition hover:border-emerald-400 hover:glow"
+    >
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <img
+            src="{{ offer.player_avatar }}"
+            alt="Avatar {{ offer.player_name }}"
+            class="w-12 h-12 rounded-full border border-emerald-400/40"
+          />
+          <div>
+            <p class="font-semibold">{{ offer.player_name }}</p>
+            <p class="text-xs text-gray-400">{{ offer.room }}</p>
+          </div>
+        </div>
+        <span class="text-xs text-emerald-400 font-mono">Markup {{ offer.markup }}</span>
+      </div>
+
+      <div class="space-y-2">
+        <h3 class="text-lg font-semibold">{{ offer.tournament_name }}</h3>
+        <p class="text-sm text-gray-400">
+          Buy-in
+          <span class="font-mono text-white">R$ {{ "%.2f"|format(offer.buyin) }}</span>
+          · Início
+          <span class="font-mono text-white">{{ offer.start_time.strftime("%H:%M") }}</span>
+        </p>
+      </div>
+
+      <div class="space-y-2">
+        <div class="flex items-center justify-between text-xs text-gray-400">
+          <span>Vendido</span>
+          <span class="font-mono text-emerald-400">{{ offer.sold_pct }}%</span>
+        </div>
+        <div class="w-full h-2 bg-white/10 rounded-full">
+          <div
+            class="h-2 rounded-full bg-emerald-400"
+            style="width: {{ offer.sold_pct }}%;"
+          ></div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-xs text-gray-400">Disponível</p>
+          <p class="font-mono text-sm text-white">
+            {{ offer.total_pct - offer.sold_pct }}% de {{ offer.total_pct }}%
+          </p>
+        </div>
+        <a
+          href="/stake/{{ offer.id }}"
+          class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+        >
+          Apoiar
+        </a>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}
