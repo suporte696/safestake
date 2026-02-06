@@ -15,9 +15,14 @@
       </p>
     </div>
     <div class="flex items-center gap-4">
-      <button class="px-5 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30">
+      {% if user and user.tipo == "jogador" %}
+      <a
+        href="/player/offers"
+        class="px-5 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+      >
         Criar oferta
-      </button>
+      </a>
+      {% endif %}
       <button class="px-5 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition">
         Ver histórico
       </button>
@@ -50,7 +55,9 @@
           Buy-in
           <span class="font-mono text-white">R$ {{ "%.2f"|format(offer.buyin) }}</span>
           · Início
-          <span class="font-mono text-white">{{ offer.start_time.strftime("%H:%M") }}</span>
+          <span class="font-mono text-white">
+            {{ offer.start_time.strftime("%H:%M") if offer.start_time else "A definir" }}
+          </span>
         </p>
       </div>
 

@@ -48,19 +48,40 @@
         <nav class="hidden md:flex items-center gap-8 text-sm text-gray-300">
           <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
           <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
+          {% if user and user.tipo == "jogador" %}
+          <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
+          {% endif %}
           <a class="hover:text-emerald-400 transition" href="#">Ranking</a>
         </nav>
 
         <div class="flex items-center gap-4">
+          {% if user %}
           <div class="hidden sm:flex flex-col text-right text-xs text-gray-400">
             <span>Carteira</span>
-            <span class="font-mono text-emerald-400 text-sm">R$ 1.540,75</span>
+            <span class="font-mono text-emerald-400 text-sm">
+              R$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
+            </span>
           </div>
-          <button
+          <a
+            href="/dashboard"
             class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
           >
-            Perfil
-          </button>
+            {{ user.nome }}
+          </a>
+          <a
+            href="/logout"
+            class="px-4 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition"
+          >
+            Sair
+          </a>
+          {% else %}
+          <a
+            href="/login"
+            class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+          >
+            Entrar
+          </a>
+          {% endif %}
         </div>
       </div>
     </header>
@@ -69,11 +90,57 @@
       {% block content %}{% endblock %}
     </main>
 
+    <div id="toastContainer" class="fixed top-6 right-6 z-50 space-y-3"></div>
+
     <footer class="border-t border-white/10 py-8">
       <div class="max-w-6xl mx-auto px-6 text-sm text-gray-400 flex flex-col md:flex-row items-center justify-between gap-4">
         <p>SAFE STAKE © 2026. Todos os direitos reservados.</p>
         <p class="text-emerald-400 font-title text-xs">DARK · BOLD · HIGH-TECH</p>
       </div>
     </footer>
+
+    <script>
+      window.showToast = (message, type = "success") => {
+        const container = document.getElementById("toastContainer");
+        if (!container) return;
+        const toast = document.createElement("div");
+        const base =
+          "flex items-start gap-3 px-4 py-3 rounded-xl text-sm border shadow-lg backdrop-blur bg-black/80 transition-all duration-300 opacity-0 translate-x-4";
+        const styles =
+          type === "error"
+            ? "border-red-500/40 text-red-200"
+            : "border-emerald-400/40 text-emerald-200";
+        const icon =
+          type === "error"
+            ? `<svg class="w-5 h-5 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                 <circle cx="12" cy="12" r="9"></circle>
+                 <path d="M12 8v5"></path>
+                 <path d="M12 16h.01"></path>
+               </svg>`
+            : `<svg class="w-5 h-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                 <circle cx="12" cy="12" r="9"></circle>
+                 <path d="M8 12l3 3 5-6"></path>
+               </svg>`;
+        toast.className = `${base} ${styles}`;
+        toast.innerHTML = `${icon}<div class="flex-1">${message}</div>`;
+        container.appendChild(toast);
+        requestAnimationFrame(() => {
+          toast.classList.remove("opacity-0", "translate-x-4");
+          toast.classList.add("opacity-100", "translate-x-0");
+        });
+        setTimeout(() => {
+          toast.classList.add("opacity-0", "translate-x-4");
+        }, 2400);
+        setTimeout(() => {
+          toast.remove();
+        }, 3000);
+      };
+    </script>
+
+    {% if requires_auth and not user %}
+    <script>
+      window.location.href = "/login";
+    </script>
+    {% endif %}
   </body>
 </html>
