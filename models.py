@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, String
@@ -31,6 +31,7 @@ class Wallet(Base):
 
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
     saldo_disponivel: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    saldo_bloqueado: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)  # propostas pendentes (bids)
     saldo_em_jogo: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     user: Mapped[User] = relationship(back_populates="wallet")
@@ -65,6 +66,7 @@ class StakeOffer(Base):
     tournament: Mapped[Tournament] = relationship(back_populates="offers")
     player: Mapped[User] = relationship()
     investments: Mapped[list["Investment"]] = relationship(back_populates="offer")
+    bids: Mapped[list["StakeBid"]] = relationship(back_populates="offer")
 
 
 class Investment(Base):
@@ -78,4 +80,23 @@ class Investment(Base):
     lucro_recebido: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
 
     offer: Mapped[StakeOffer] = relationship(back_populates="investments")
+    backer: Mapped[User] = relationship()
+
+
+class StakeBid(Base):
+    __tablename__ = "stake_bids"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("stake_offers.id"), nullable=False)
+    backer_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    proposed_markup: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum("PENDING", "ACCEPTED", "REJECTED", "CANCELLED", name="stake_bid_status"),
+        nullable=False,
+        default="PENDING",
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    offer: Mapped[StakeOffer] = relationship(back_populates="bids")
     backer: Mapped[User] = relationship()

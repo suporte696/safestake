@@ -98,8 +98,70 @@
     >
       Confirmar apoio
     </button>
+
+    <button
+      type="button"
+      id="openBidModal"
+      class="w-full px-5 py-3 rounded-full border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/10 transition"
+    >
+      Fazer oferta personalizada (Bid)
+    </button>
   </aside>
 </section>
+
+<!-- Modal Bid -->
+<div id="bidModal" class="fixed inset-0 z-40 hidden">
+  <div class="absolute inset-0 bg-black/70" id="bidModalBackdrop"></div>
+  <div class="absolute inset-0 flex items-center justify-center p-4">
+    <div class="bg-[#0b0b0b] border border-white/10 rounded-2xl p-8 w-full max-w-md shadow-xl">
+      <h2 class="font-title text-xl uppercase text-emerald-400 mb-2">Oferta personalizada (Bid)</h2>
+      <p class="text-sm text-gray-400 mb-6">
+        Envie valor e markup desejado. O jogador pode aceitar ou recusar.
+      </p>
+      <div class="space-y-4">
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Valor (R$)</label>
+          <input
+            id="bidAmount"
+            type="number"
+            step="0.01"
+            min="0.01"
+            placeholder="0,00"
+            class="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+          />
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 block mb-1">Markup desejado (ex: 1.05)</label>
+          <input
+            id="bidMarkup"
+            type="number"
+            step="0.01"
+            min="0.5"
+            placeholder="1.00"
+            class="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+          />
+          <p class="text-xs text-gray-500 mt-1">Mínimo: 0.5</p>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button
+          type="button"
+          id="closeBidModal"
+          class="flex-1 px-4 py-3 rounded-xl border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-400 transition"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          id="submitBid"
+          class="flex-1 px-4 py-3 rounded-xl bg-emerald-400 text-black font-semibold hover:opacity-90 transition"
+        >
+          Enviar proposta
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
   const offerId = {{ offer.id if offer else "null" }};
@@ -149,6 +211,72 @@
         return;
       }
       window.showToast("Investimento confirmado!");
+      window.location.reload();
+    } catch (error) {
+      window.showToast("Falha de conexão.", "error");
+    }
+  });
+
+  // Bid modal
+  const bidModal = document.getElementById("bidModal");
+  const openBidModalBtn = document.getElementById("openBidModal");
+  const closeBidModalBtn = document.getElementById("closeBidModal");
+  const bidModalBackdrop = document.getElementById("bidModalBackdrop");
+  const bidAmountInput = document.getElementById("bidAmount");
+  const bidMarkupInput = document.getElementById("bidMarkup");
+  const submitBidBtn = document.getElementById("submitBid");
+
+  function openBidModal() {
+    if (bidModal) {
+      bidModal.classList.remove("hidden");
+      bidAmountInput.value = "";
+      bidMarkupInput.value = "";
+    }
+  }
+  function closeBidModal() {
+    if (bidModal) bidModal.classList.add("hidden");
+  }
+
+  openBidModalBtn?.addEventListener("click", openBidModal);
+  closeBidModalBtn?.addEventListener("click", closeBidModal);
+  bidModalBackdrop?.addEventListener("click", closeBidModal);
+
+  submitBidBtn?.addEventListener("click", async () => {
+    const amount = Number(bidAmountInput?.value?.replace(",", ".") || 0);
+    const proposedMarkup = Number(bidMarkupInput?.value?.replace(",", ".") || 0);
+    if (!offerId) {
+      window.showToast("Oferta inválida.", "error");
+      return;
+    }
+    if (!amount || amount <= 0) {
+      window.showToast("Informe um valor válido.", "error");
+      return;
+    }
+    if (proposedMarkup < 0.5) {
+      window.showToast("Markup deve ser >= 0.5.", "error");
+      return;
+    }
+    try {
+      const response = await fetch("/api/bid/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          offer_id: offerId,
+          amount,
+          proposed_markup: proposedMarkup,
+        }),
+      });
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok) {
+        window.showToast(data.detail || "Erro ao enviar proposta.", "error");
+        return;
+      }
+      window.showToast("Proposta enviada! Aguarde a resposta do jogador.");
+      closeBidModal();
       window.location.reload();
     } catch (error) {
       window.showToast("Falha de conexão.", "error");

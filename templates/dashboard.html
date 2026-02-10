@@ -19,11 +19,17 @@
     </button>
   </div>
 
-  <div class="grid gap-6 md:grid-cols-2">
+  <div class="grid gap-6 md:grid-cols-3">
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <p class="text-xs text-gray-400">Saldo disponível</p>
       <p class="text-3xl font-mono text-emerald-400 mt-2">
         R$ {{ "%.2f"|format(wallet.saldo_disponivel) }}
+      </p>
+    </div>
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <p class="text-xs text-gray-400">Saldo bloqueado (propostas)</p>
+      <p class="text-3xl font-mono text-amber-400/90 mt-2">
+        R$ {{ "%.2f"|format(wallet.saldo_bloqueado) }}
       </p>
     </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
@@ -33,6 +39,105 @@
       </p>
     </div>
   </div>
+
+  {% if user.tipo == "jogador" %}
+  <div class="bg-black border border-white/10 rounded-2xl p-6">
+    <h2 class="font-title text-xl uppercase text-emerald-400 mb-4">Propostas recebidas</h2>
+    <p class="text-sm text-gray-400 mb-4">Bids pendentes nas suas ofertas. Aceite ou recuse.</p>
+    {% if bids_received %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Torneio</th>
+            <th class="py-3">Apoiador</th>
+            <th class="py-3">Valor</th>
+            <th class="py-3">Markup proposto</th>
+            <th class="py-3">Data</th>
+            <th class="py-3">Ação</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for bid in bids_received %}
+          <tr class="hover:bg-white/5">
+            <td class="py-3">{{ bid.tournament_name }}</td>
+            <td class="py-3">{{ bid.backer_name }}</td>
+            <td class="py-3 font-mono">R$ {{ "%.2f"|format(bid.amount) }}</td>
+            <td class="py-3 font-mono text-emerald-400">{{ bid.proposed_markup }}</td>
+            <td class="py-3 text-gray-400">{{ bid.created_at.strftime("%d/%m %H:%M") if bid.created_at else "-" }}</td>
+            <td class="py-3 flex gap-2">
+              <button
+                type="button"
+                class="bid-respond px-2 py-1 rounded-lg bg-emerald-400/20 text-emerald-400 border border-emerald-400/50 hover:bg-emerald-400/30 transition text-xs"
+                data-bid-id="{{ bid.id }}"
+                data-action="ACCEPT"
+              >
+                Aceitar
+              </button>
+              <button
+                type="button"
+                class="bid-respond px-2 py-1 rounded-lg bg-red-500/20 text-red-400 border border-red-500/50 hover:bg-red-500/30 transition text-xs"
+                data-bid-id="{{ bid.id }}"
+                data-action="REJECT"
+              >
+                Recusar
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-gray-500 py-4">Nenhuma proposta pendente.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if user.tipo == "apoiador" %}
+  <div class="bg-black border border-white/10 rounded-2xl p-6">
+    <h2 class="font-title text-xl uppercase text-emerald-400 mb-4">Minhas propostas</h2>
+    <p class="text-sm text-gray-400 mb-4">Status das suas ofertas personalizadas (Bids).</p>
+    {% if my_bids %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Torneio</th>
+            <th class="py-3">Valor</th>
+            <th class="py-3">Markup</th>
+            <th class="py-3">Data</th>
+            <th class="py-3">Status</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for bid in my_bids %}
+          <tr class="hover:bg-white/5">
+            <td class="py-3">{{ bid.tournament_name }}</td>
+            <td class="py-3 font-mono">R$ {{ "%.2f"|format(bid.amount) }}</td>
+            <td class="py-3 font-mono">{{ bid.proposed_markup }}</td>
+            <td class="py-3 text-gray-400">{{ bid.created_at.strftime("%d/%m %H:%M") if bid.created_at else "-" }}</td>
+            <td class="py-3">
+              {% if bid.status == "PENDING" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
+              {% elif bid.status == "ACCEPTED" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aceito</span>
+              {% elif bid.status == "REJECTED" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Recusado</span>
+              {% else %}
+              <span class="px-3 py-1 rounded-full text-xs border border-white/10 text-gray-400">{{ bid.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-gray-500 py-4">Você ainda não enviou nenhuma proposta. Use "Fazer oferta personalizada (Bid)" na página de uma oferta.</p>
+    {% endif %}
+  </div>
+  {% endif %}
 
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
@@ -73,4 +178,34 @@
     </div>
   </div>
 </section>
+
+<script>
+  document.querySelectorAll(".bid-respond").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const bidId = btn.getAttribute("data-bid-id");
+      const action = btn.getAttribute("data-action");
+      if (!bidId || !action) return;
+      try {
+        const response = await fetch("/api/bid/" + bidId + "/respond", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action }),
+        });
+        if (response.status === 401) {
+          window.location.href = "/login";
+          return;
+        }
+        const data = await response.json();
+        if (!response.ok) {
+          window.showToast(data.detail || "Erro ao responder.", "error");
+          return;
+        }
+        window.showToast(action === "ACCEPT" ? "Proposta aceita!" : "Proposta recusada.");
+        window.location.reload();
+      } catch (error) {
+        window.showToast("Falha de conexão.", "error");
+      }
+    });
+  });
+</script>
 {% endblock %}

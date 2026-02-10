@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import Investment, StakeOffer, Tournament, User
+from models import Investment, StakeBid, StakeOffer, Tournament, User, Wallet
 from routers.auth import fetch_current_user
 
 templates = Jinja2Templates(directory="templates")
@@ -88,15 +88,32 @@ def stake_detail(request: Request, offer_id: int, db: Session = Depends(get_db))
     )
 
 
+def serialize_bid(bid: StakeBid) -> dict:
+    offer = bid.offer
+    tournament = offer.tournament if offer else None
+    backer = bid.backer
+    return {
+        "id": bid.id,
+        "offer_id": bid.offer_id,
+        "tournament_name": tournament.nome if tournament else "Torneio",
+        "backer_name": backer.nome if backer else "Apoiador",
+        "amount": bid.amount,
+        "proposed_markup": bid.proposed_markup,
+        "status": bid.status,
+        "created_at": bid.created_at,
+    }
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    wallet = {"saldo_disponivel": 0, "saldo_em_jogo": 0}
+    wallet = {"saldo_disponivel": 0, "saldo_bloqueado": 0, "saldo_em_jogo": 0}
     if user and user.wallet:
         wallet = {
             "saldo_disponivel": user.wallet.saldo_disponivel,
+            "saldo_bloqueado": getattr(user.wallet, "saldo_bloqueado", Decimal("0")) or Decimal("0"),
             "saldo_em_jogo": user.wallet.saldo_em_jogo,
         }
 
@@ -125,12 +142,39 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                 "status": tournament.status if tournament else "Aberto",
             }
         )
+
+    bids_received = []
+    my_bids = []
+    if user.tipo == "jogador":
+        stmt_bids_received = (
+            select(StakeBid)
+            .join(StakeOffer, StakeBid.offer_id == StakeOffer.id)
+            .where(StakeOffer.player_id == user.id)
+            .where(StakeBid.status == "PENDING")
+            .options(joinedload(StakeBid.offer).joinedload(StakeOffer.tournament))
+            .options(joinedload(StakeBid.backer))
+            .order_by(StakeBid.created_at.desc())
+        )
+        for b in db.execute(stmt_bids_received).scalars().all():
+            bids_received.append(serialize_bid(b))
+    if user.tipo == "apoiador":
+        stmt_my_bids = (
+            select(StakeBid)
+            .where(StakeBid.backer_id == user.id)
+            .options(joinedload(StakeBid.offer).joinedload(StakeOffer.tournament))
+            .order_by(StakeBid.created_at.desc())
+        )
+        for b in db.execute(stmt_my_bids).scalars().all():
+            my_bids.append(serialize_bid(b))
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "wallet": wallet,
             "stakes": stakes,
+            "bids_received": bids_received,
+            "my_bids": my_bids,
             "user": user,
             "requires_auth": True,
         },
@@ -284,3 +328,159 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         db.add(investment)
 
     return {"success": True}
+
+
+# --- Bid (Contraproposta de Markup) ---
+
+MIN_PROPOSED_MARKUP = Decimal("0.5")
+
+
+@router.post("/api/bid/create")
+async def bid_create(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    offer_id = payload.get("offer_id")
+    amount_raw = payload.get("amount")
+    proposed_markup_raw = payload.get("proposed_markup")
+
+    if offer_id is None or amount_raw is None or proposed_markup_raw is None:
+        raise HTTPException(status_code=400, detail="Dados inválidos: offer_id, amount e proposed_markup obrigatórios.")
+
+    try:
+        amount = Decimal(str(amount_raw))
+        proposed_markup = Decimal(str(proposed_markup_raw))
+    except InvalidOperation:
+        raise HTTPException(status_code=400, detail="Valor ou markup inválido.")
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Valor deve ser maior que zero.")
+    if proposed_markup < MIN_PROPOSED_MARKUP:
+        raise HTTPException(status_code=400, detail=f"Markup proposto deve ser >= {MIN_PROPOSED_MARKUP}.")
+
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para enviar proposta.")
+    if user.tipo != "apoiador":
+        raise HTTPException(status_code=403, detail="Apenas apoiadores podem enviar bids.")
+
+    with db.begin():
+        wallet_stmt = select(Wallet).where(Wallet.user_id == user.id).with_for_update()
+        wallet = db.execute(wallet_stmt).scalars().first()
+        if not wallet:
+            raise HTTPException(status_code=400, detail="Carteira não encontrada.")
+
+        offer_stmt = (
+            select(StakeOffer)
+            .where(StakeOffer.id == offer_id)
+            .options(joinedload(StakeOffer.tournament))
+        )
+        offer = db.execute(offer_stmt).scalars().first()
+        if not offer or not offer.tournament:
+            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+
+        saldo_disp = Decimal(str(wallet.saldo_disponivel))
+        if saldo_disp < amount:
+            raise HTTPException(status_code=400, detail="Saldo disponível insuficiente.")
+
+        saldo_bloq = Decimal(str(getattr(wallet, "saldo_bloqueado", 0) or 0))
+        wallet.saldo_disponivel = saldo_disp - amount
+        wallet.saldo_bloqueado = saldo_bloq + amount
+        bid = StakeBid(
+            offer_id=offer.id,
+            backer_id=user.id,
+            amount=amount,
+            proposed_markup=proposed_markup,
+            status="PENDING",
+        )
+        db.add(bid)
+        db.flush()
+
+    return {"success": True, "bid_id": bid.id}
+
+
+@router.post("/api/bid/{bid_id}/respond")
+async def bid_respond(
+    request: Request,
+    bid_id: int,
+    db: Session = Depends(get_db),
+):
+    payload = await request.json()
+    action = payload.get("action")
+    if action not in ("ACCEPT", "REJECT"):
+        raise HTTPException(status_code=400, detail="action deve ser ACCEPT ou REJECT.")
+
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login.")
+    if user.tipo != "jogador":
+        raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
+
+    with db.begin():
+        bid_stmt = (
+            select(StakeBid)
+            .where(StakeBid.id == bid_id)
+            .options(
+                joinedload(StakeBid.offer).joinedload(StakeOffer.tournament),
+                joinedload(StakeBid.offer).joinedload(StakeOffer.player),
+                joinedload(StakeBid.backer),
+            )
+        )
+        bid = db.execute(bid_stmt).scalars().first()
+        if not bid:
+            raise HTTPException(status_code=404, detail="Proposta não encontrada.")
+        if bid.status != "PENDING":
+            raise HTTPException(status_code=400, detail="Esta proposta já foi respondida.")
+
+        offer = bid.offer
+        if offer.player_id != user.id:
+            raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
+
+        backer_wallet_stmt = select(Wallet).where(Wallet.user_id == bid.backer_id).with_for_update()
+        backer_wallet = db.execute(backer_wallet_stmt).scalars().first()
+        if not backer_wallet:
+            raise HTTPException(status_code=400, detail="Carteira do apoiador não encontrada.")
+
+        amount = Decimal(str(bid.amount))
+        saldo_bloq = Decimal(str(getattr(backer_wallet, "saldo_bloqueado", 0) or 0))
+        if saldo_bloq < amount:
+            bid.status = "CANCELLED"
+            raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente; proposta cancelada.")
+
+        if action == "REJECT":
+            backer_wallet.saldo_bloqueado = saldo_bloq - amount
+            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+            bid.status = "REJECTED"
+            return {"success": True, "status": "REJECTED"}
+
+        # ACCEPT
+        buyin = Decimal(str(offer.tournament.buyin))
+        total_pct = Decimal(str(offer.total_disponivel_pct))
+        sold_pct = Decimal(str(offer.vendido_pct))
+        available_pct = total_pct - sold_pct
+        proposed_markup = Decimal(str(bid.proposed_markup))
+        if buyin <= 0 or proposed_markup <= 0:
+            raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
+
+        share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
+        if share_pct > available_pct:
+            backer_wallet.saldo_bloqueado = saldo_bloq - amount
+            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+            bid.status = "REJECTED"
+            raise HTTPException(
+                status_code=400,
+                detail="Percentual disponível na oferta não é mais suficiente para este valor/markup.",
+            )
+
+        backer_wallet.saldo_bloqueado = saldo_bloq - amount
+        backer_wallet.saldo_em_jogo = Decimal(str(backer_wallet.saldo_em_jogo)) + amount
+        offer.vendido_pct = sold_pct + share_pct
+        investment = Investment(
+            offer_id=offer.id,
+            backer_id=bid.backer_id,
+            valor_investido=amount,
+            pct_comprada=share_pct,
+            lucro_recebido=Decimal("0"),
+        )
+        db.add(investment)
+        bid.status = "ACCEPTED"
+
+    return {"success": True, "status": "ACCEPTED"}
