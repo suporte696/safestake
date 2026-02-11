@@ -73,6 +73,7 @@
         <input
           type="text"
           name="telefone"
+          id="telefone"
           value="{{ form_data.telefone or '' }}"
           placeholder="(11) 99999-9999"
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
@@ -87,6 +88,7 @@
         <input
           type="text"
           name="cpf_cnpj"
+          id="cpf_cnpj"
           value="{{ form_data.cpf_cnpj or '' }}"
           placeholder="Somente números"
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
@@ -98,11 +100,23 @@
         <input
           type="password"
           name="senha"
-          placeholder="Mínimo 6 caracteres"
+          id="senha"
+          placeholder="Mínimo 8, com letra e número"
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
           required
         />
       </div>
+    </div>
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Confirmar senha</label>
+      <input
+        type="password"
+        name="confirmar_senha"
+        id="confirmar_senha"
+        placeholder="Digite a senha novamente"
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        required
+      />
     </div>
 
     <div id="jogadorFields" class="space-y-2 {% if form_data.tipo == 'apoiador' %}hidden{% endif %}">
@@ -133,6 +147,10 @@
 <script>
   const radios = document.querySelectorAll('input[name="tipo"]');
   const jogadorFields = document.getElementById("jogadorFields");
+  const phoneInput = document.getElementById("telefone");
+  const docInput = document.getElementById("cpf_cnpj");
+  const passwordInput = document.getElementById("senha");
+  const confirmPasswordInput = document.getElementById("confirmar_senha");
 
   function toggleJogadorFields() {
     const selected = document.querySelector('input[name="tipo"]:checked')?.value;
@@ -146,6 +164,58 @@
   radios.forEach((radio) => {
     radio.addEventListener("change", toggleJogadorFields);
   });
+
+  function onlyDigits(value) {
+    return value.replace(/\D/g, "");
+  }
+
+  function maskPhone(value) {
+    const digits = onlyDigits(value).slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+
+  function maskCpfCnpj(value) {
+    const digits = onlyDigits(value).slice(0, 14);
+    if (digits.length <= 11) {
+      if (digits.length <= 3) return digits;
+      if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+      if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+      return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+    }
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+    if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+    if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+    return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+  }
+
+  if (phoneInput) {
+    phoneInput.addEventListener("input", () => {
+      phoneInput.value = maskPhone(phoneInput.value);
+    });
+    phoneInput.value = maskPhone(phoneInput.value);
+  }
+
+  if (docInput) {
+    docInput.addEventListener("input", () => {
+      docInput.value = maskCpfCnpj(docInput.value);
+    });
+    docInput.value = maskCpfCnpj(docInput.value);
+  }
+
+  if (confirmPasswordInput && passwordInput) {
+    confirmPasswordInput.addEventListener("input", () => {
+      if (confirmPasswordInput.value && confirmPasswordInput.value !== passwordInput.value) {
+        confirmPasswordInput.setCustomValidity("As senhas não conferem.");
+      } else {
+        confirmPasswordInput.setCustomValidity("");
+      }
+    });
+  }
+
   toggleJogadorFields();
 </script>
 {% endblock %}

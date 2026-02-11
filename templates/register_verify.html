@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block title %}Verificar Email | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="max-w-lg mx-auto bg-black border border-white/10 rounded-2xl p-8 space-y-6 glow">
+  <div class="text-center space-y-2">
+    <img
+      src="/static/img/safestake-01.svg"
+      alt="SAFE STAKE"
+      class="h-6 mx-auto"
+    />
+    <h1 class="font-title text-2xl uppercase">Verifique seu Email</h1>
+    <p class="text-gray-400 text-sm">
+      Enviamos um código de 6 dígitos para
+      <span class="text-emerald-400">{{ email_masked }}</span>
+    </p>
+  </div>
+
+  {% if error %}
+  <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if info %}
+  <div class="border border-emerald-500/40 text-emerald-200 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    {{ info }}
+  </div>
+  {% endif %}
+
+  <form id="verifyForm" class="space-y-5" method="post" action="/register/verify">
+    <input type="hidden" name="code" id="code" />
+    <div class="flex items-center justify-center gap-2 sm:gap-3">
+      {% for i in range(6) %}
+      <input
+        type="text"
+        inputmode="numeric"
+        pattern="[0-9]*"
+        maxlength="1"
+        class="code-input w-11 h-12 sm:w-12 sm:h-14 text-center text-xl font-semibold bg-[#0b0b0b] border border-white/15 rounded-xl focus:outline-none focus:border-emerald-400"
+        autocomplete="one-time-code"
+      />
+      {% endfor %}
+    </div>
+    <button
+      type="submit"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Confirmar Código
+    </button>
+  </form>
+
+  <form method="post" action="/register/resend-code">
+    <button
+      type="submit"
+      class="w-full px-5 py-3 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+    >
+      Reenviar código
+    </button>
+  </form>
+</section>
+
+<script>
+  const inputs = Array.from(document.querySelectorAll(".code-input"));
+  const hiddenCode = document.getElementById("code");
+  const form = document.getElementById("verifyForm");
+
+  function digitsOnly(value) {
+    return value.replace(/\D/g, "");
+  }
+
+  function syncHiddenCode() {
+    hiddenCode.value = inputs.map((input) => input.value).join("");
+  }
+
+  function fillInputsFromString(raw) {
+    const digits = digitsOnly(raw).slice(0, 6);
+    inputs.forEach((input, index) => {
+      input.value = digits[index] || "";
+    });
+    syncHiddenCode();
+    if (digits.length < 6) {
+      inputs[Math.min(digits.length, 5)].focus();
+    } else {
+      inputs[5].focus();
+    }
+  }
+
+  inputs.forEach((input, index) => {
+    input.addEventListener("input", (event) => {
+      const value = digitsOnly(event.target.value);
+      event.target.value = value.slice(-1);
+      syncHiddenCode();
+      if (event.target.value && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+      }
+    });
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Backspace" && !input.value && index > 0) {
+        inputs[index - 1].focus();
+      }
+      if (event.key === "ArrowLeft" && index > 0) {
+        inputs[index - 1].focus();
+      }
+      if (event.key === "ArrowRight" && index < inputs.length - 1) {
+        inputs[index + 1].focus();
+      }
+    });
+
+    input.addEventListener("paste", (event) => {
+      event.preventDefault();
+      const pasted = event.clipboardData?.getData("text") || "";
+      fillInputsFromString(pasted);
+    });
+  });
+
+  form.addEventListener("submit", (event) => {
+    syncHiddenCode();
+    if (!/^\d{6}$/.test(hiddenCode.value)) {
+      event.preventDefault();
+      window.showToast("Informe os 6 dígitos do código.", "error");
+    }
+  });
+
+  inputs[0]?.focus();
+</script>
+{% endblock %}
