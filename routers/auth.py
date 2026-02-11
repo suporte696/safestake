@@ -1,9 +1,10 @@
+import hashlib
+import json
 import os
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, Request, Security
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,7 +15,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import User, Wallet
+from models import EmailVerificationCode, User, Wallet
 from services.email_sender import send_verification_code_email
 
 templates = Jinja2Templates(directory="templates")
@@ -22,10 +23,22 @@ router = APIRouter()
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 session_cookie = APIKeyCookie(name="safe_stake_session", auto_error=False)
-PENDING_REGISTRATIONS: dict[str, dict] = {}
-REGISTER_CODE_TTL_MINUTES = 10
-REGISTER_MAX_ATTEMPTS = 5
+REGISTER_PURPOSE = "register"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+REGISTER_CODE_TTL_MINUTES = get_env_int("REGISTER_CODE_TTL_MINUTES", 10)
+REGISTER_MAX_ATTEMPTS = get_env_int("REGISTER_MAX_ATTEMPTS", 5)
 
 
 def get_password_hash(password: str) -> str:
@@ -106,31 +119,40 @@ def is_strong_password(password: str) -> bool:
     return has_letter and has_digit
 
 
-def cleanup_pending_registrations() -> None:
+def get_verification_secret() -> str:
+    return (
+        os.getenv("VERIFICATION_CODE_SECRET")
+        or os.getenv("SESSION_SECRET")
+        or os.getenv("SECRET_KEY")
+        or "safe-stake-dev-secret"
+    )
+
+
+def hash_verification_code(email: str, purpose: str, code: str) -> str:
+    payload = f"{get_verification_secret()}:{email.lower()}:{purpose}:{code}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def get_pending_verification_from_session(request: Request, db: Session) -> EmailVerificationCode | None:
+    verification_id = request.session.get("pending_verification_id")
+    if not verification_id:
+        return None
+    stmt = select(EmailVerificationCode).where(
+        EmailVerificationCode.id == verification_id,
+        EmailVerificationCode.purpose == REGISTER_PURPOSE,
+        EmailVerificationCode.consumed_at.is_(None),
+    )
+    verification = db.execute(stmt).scalars().first()
+    if not verification:
+        request.session.pop("pending_verification_id", None)
+        return None
     now = datetime.now(timezone.utc)
-    expired_tokens = [
-        token
-        for token, payload in PENDING_REGISTRATIONS.items()
-        if payload["expires_at"] < now
-    ]
-    for token in expired_tokens:
-        PENDING_REGISTRATIONS.pop(token, None)
-
-
-def get_pending_registration_from_session(request: Request) -> dict | None:
-    cleanup_pending_registrations()
-    token = request.session.get("pending_register_token")
-    if not token:
+    if verification.expires_at < now:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
         return None
-    payload = PENDING_REGISTRATIONS.get(token)
-    if not payload:
-        request.session.pop("pending_register_token", None)
-        return None
-    if payload["expires_at"] < datetime.now(timezone.utc):
-        PENDING_REGISTRATIONS.pop(token, None)
-        request.session.pop("pending_register_token", None)
-        return None
-    return payload
+    return verification
 
 
 def render_register(
@@ -153,7 +175,7 @@ def render_register(
 
 def render_register_verify(
     request: Request,
-    pending: dict,
+    verification: EmailVerificationCode,
     error: str | None = None,
     info: str | None = None,
 ):
@@ -165,7 +187,7 @@ def render_register_verify(
             "wallet": None,
             "error": error,
             "info": info,
-            "email_masked": mask_email(pending["email"]),
+            "email_masked": mask_email(verification.email),
         },
         status_code=400 if error else 200,
     )
@@ -336,43 +358,64 @@ def register(
             error = "Este CPF/CNPJ já está cadastrado."
         return render_register(request, error, form_data)
 
-    cleanup_pending_registrations()
+    now = datetime.now(timezone.utc)
     code = f"{secrets.randbelow(1_000_000):06d}"
-    token = str(uuid4())
-    pending = {
-        "token": token,
-        "nome": nome.strip(),
-        "email": normalized_email,
-        "password_hash": get_password_hash(senha),
-        "tipo": selected_type,
-        "cpf_cnpj": normalized_doc,
-        "telefone": normalized_phone,
-        "sharkscope_link": sharkscope_link.strip() if selected_type == "jogador" and sharkscope_link else None,
-        "endereco_completo": None,
-        "data_nascimento": None,
-        "bio": None,
-        "verification_code": code,
-        "attempts": 0,
-        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=REGISTER_CODE_TTL_MINUTES),
-    }
-    PENDING_REGISTRATIONS[token] = pending
-    request.session["pending_register_token"] = token
+    code_hash = hash_verification_code(normalized_email, REGISTER_PURPOSE, code)
+    registration_payload = json.dumps(
+        {
+            "nome": nome.strip(),
+            "email": normalized_email,
+            "password_hash": get_password_hash(senha),
+            "tipo": selected_type,
+            "cpf_cnpj": normalized_doc,
+            "telefone": normalized_phone,
+            "sharkscope_link": sharkscope_link.strip() if selected_type == "jogador" and sharkscope_link else None,
+            "endereco_completo": None,
+            "data_nascimento": None,
+            "bio": None,
+        },
+        ensure_ascii=True,
+    )
+
+    active_codes_stmt = select(EmailVerificationCode).where(
+        EmailVerificationCode.email == normalized_email,
+        EmailVerificationCode.purpose == REGISTER_PURPOSE,
+        EmailVerificationCode.consumed_at.is_(None),
+    )
+    for item in db.execute(active_codes_stmt).scalars().all():
+        item.consumed_at = now
+
+    verification = EmailVerificationCode(
+        email=normalized_email,
+        purpose=REGISTER_PURPOSE,
+        code_hash=code_hash,
+        registration_payload=registration_payload,
+        attempts=0,
+        max_attempts=REGISTER_MAX_ATTEMPTS,
+        expires_at=now + timedelta(minutes=REGISTER_CODE_TTL_MINUTES),
+        consumed_at=None,
+        created_at=now,
+    )
+    db.add(verification)
+    db.commit()
+    db.refresh(verification)
+    request.session["pending_verification_id"] = verification.id
 
     email_sent = send_verification_code_email(normalized_email, code)
     if email_sent:
         return RedirectResponse(url="/register/verify", status_code=303)
 
     allow_fallback = os.getenv("ALLOW_LOCAL_EMAIL_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
-    if not allow_fallback:
-        PENDING_REGISTRATIONS.pop(token, None)
-        request.session.pop("pending_register_token", None)
-        return render_register(request, "Não foi possível enviar o email de verificação.", form_data)
-
-    return render_register_verify(
-        request,
-        pending,
-        info=f"Modo teste: use o código {code} para validar seu cadastro.",
-    )
+    if allow_fallback:
+        return render_register_verify(
+            request,
+            verification,
+            info=f"Modo teste: use o código {code} para validar seu cadastro.",
+        )
+    verification.consumed_at = datetime.now(timezone.utc)
+    db.commit()
+    request.session.pop("pending_verification_id", None)
+    return render_register(request, "Não foi possível enviar o email de verificação.", form_data)
 
 
 @router.get("/register/verify", response_class=HTMLResponse)
@@ -380,10 +423,10 @@ def register_verify_form(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    pending = get_pending_registration_from_session(request)
-    if not pending:
+    verification = get_pending_verification_from_session(request, db)
+    if not verification:
         return RedirectResponse(url="/register", status_code=303)
-    return render_register_verify(request, pending)
+    return render_register_verify(request, verification)
 
 
 @router.post("/register/verify", response_class=HTMLResponse)
@@ -392,50 +435,66 @@ def register_verify_submit(
     code: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    pending = get_pending_registration_from_session(request)
-    if not pending:
+    verification = get_pending_verification_from_session(request, db)
+    if not verification:
         return RedirectResponse(url="/register", status_code=303)
 
     code_digits = "".join(char for char in code if char.isdigit())
     if len(code_digits) != 6:
-        return render_register_verify(request, pending, error="Informe o código de 6 dígitos.")
+        return render_register_verify(request, verification, error="Informe o código de 6 dígitos.")
 
-    if pending["attempts"] >= REGISTER_MAX_ATTEMPTS:
-        PENDING_REGISTRATIONS.pop(pending["token"], None)
-        request.session.pop("pending_register_token", None)
+    now = datetime.now(timezone.utc)
+    if verification.attempts >= verification.max_attempts:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
         return render_register(request, "Muitas tentativas. Refaça seu cadastro.")
 
-    if code_digits != pending["verification_code"]:
-        pending["attempts"] += 1
-        attempts_left = REGISTER_MAX_ATTEMPTS - pending["attempts"]
+    submitted_hash = hash_verification_code(verification.email, verification.purpose, code_digits)
+    if submitted_hash != verification.code_hash:
+        verification.attempts += 1
+        attempts_left = verification.max_attempts - verification.attempts
         if attempts_left <= 0:
-            PENDING_REGISTRATIONS.pop(pending["token"], None)
-            request.session.pop("pending_register_token", None)
+            verification.consumed_at = now
+            db.commit()
+            request.session.pop("pending_verification_id", None)
             return render_register(request, "Código inválido. Refaça seu cadastro.")
+        db.commit()
         return render_register_verify(
             request,
-            pending,
+            verification,
             error=f"Código inválido. Restam {attempts_left} tentativa(s).",
         )
 
-    exists_stmt = select(User).where(or_(User.email == pending["email"], User.cpf_cnpj == pending["cpf_cnpj"]))
+    try:
+        payload = json.loads(verification.registration_payload or "{}")
+    except json.JSONDecodeError:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
+        return render_register(request, "Cadastro pendente inválido. Refaça seu cadastro.")
+
+    email = str(payload.get("email", "")).strip().lower()
+    cpf_cnpj = str(payload.get("cpf_cnpj", "")).strip()
+    exists_stmt = select(User).where(or_(User.email == email, User.cpf_cnpj == cpf_cnpj))
     existing_user = db.execute(exists_stmt).scalars().first()
     if existing_user:
-        PENDING_REGISTRATIONS.pop(pending["token"], None)
-        request.session.pop("pending_register_token", None)
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
         return render_register(request, "Email ou CPF/CNPJ já foi cadastrado.")
 
     new_user = User(
-        nome=pending["nome"],
-        email=pending["email"],
-        password_hash=pending["password_hash"],
-        tipo=pending["tipo"],
-        cpf_cnpj=pending["cpf_cnpj"],
-        telefone=pending["telefone"],
-        sharkscope_link=pending["sharkscope_link"],
-        endereco_completo=pending["endereco_completo"],
-        data_nascimento=pending["data_nascimento"],
-        bio=pending["bio"],
+        nome=str(payload.get("nome", "")).strip(),
+        email=email,
+        password_hash=str(payload.get("password_hash", "")),
+        tipo=str(payload.get("tipo", "apoiador")),
+        cpf_cnpj=cpf_cnpj,
+        telefone=str(payload.get("telefone", "")).strip(),
+        sharkscope_link=payload.get("sharkscope_link"),
+        endereco_completo=payload.get("endereco_completo"),
+        data_nascimento=payload.get("data_nascimento"),
+        bio=payload.get("bio"),
         is_verified=True,
     )
     db.add(new_user)
@@ -448,10 +507,10 @@ def register_verify_submit(
             saldo_em_jogo=Decimal("0"),
         )
     )
+    verification.consumed_at = now
     db.commit()
 
-    PENDING_REGISTRATIONS.pop(pending["token"], None)
-    request.session.pop("pending_register_token", None)
+    request.session.pop("pending_verification_id", None)
     return RedirectResponse(url="/login?registered=1", status_code=303)
 
 
@@ -460,25 +519,28 @@ def register_resend_code(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    pending = get_pending_registration_from_session(request)
-    if not pending:
+    verification = get_pending_verification_from_session(request, db)
+    if not verification:
         return RedirectResponse(url="/register", status_code=303)
 
-    pending["verification_code"] = f"{secrets.randbelow(1_000_000):06d}"
-    pending["attempts"] = 0
-    pending["expires_at"] = datetime.now(timezone.utc) + timedelta(minutes=REGISTER_CODE_TTL_MINUTES)
-    sent = send_verification_code_email(pending["email"], pending["verification_code"])
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    verification.code_hash = hash_verification_code(verification.email, verification.purpose, code)
+    verification.attempts = 0
+    verification.expires_at = datetime.now(timezone.utc) + timedelta(minutes=REGISTER_CODE_TTL_MINUTES)
+    db.commit()
+
+    sent = send_verification_code_email(verification.email, code)
     if sent:
-        return render_register_verify(request, pending, info="Enviamos um novo código para seu email.")
+        return render_register_verify(request, verification, info="Enviamos um novo código para seu email.")
 
     allow_fallback = os.getenv("ALLOW_LOCAL_EMAIL_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
     if allow_fallback:
         return render_register_verify(
             request,
-            pending,
-            info=f"Modo teste: novo código {pending['verification_code']}.",
+            verification,
+            info=f"Modo teste: novo código {code}.",
         )
-    return render_register_verify(request, pending, error="Não foi possível reenviar o código.")
+    return render_register_verify(request, verification, error="Não foi possível reenviar o código.")
 
 
 @router.get("/logout")
