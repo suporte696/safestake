@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
+from constants import SUPPORTED_ROOMS
 from db import get_db
 from models import Investment, StakeBid, StakeOffer, Tournament, User, Wallet
 from routers.auth import fetch_current_user
@@ -25,7 +26,11 @@ def serialize_offer(offer: StakeOffer) -> dict:
         "player_name": player.nome if player else "Player",
         "player_avatar": DEFAULT_AVATAR,
         "tournament_name": tournament.nome if tournament else "Torneio",
-        "room": tournament.sharkscope_id if tournament and tournament.sharkscope_id else "Sala não informada",
+        "room": (
+            tournament.plataforma
+            if tournament and getattr(tournament, "plataforma", None)
+            else (tournament.sharkscope_id if tournament and tournament.sharkscope_id else "Sala não informada")
+        ),
         "buyin": tournament.buyin if tournament else 0,
         "markup": offer.markup,
         "total_pct": offer.total_disponivel_pct,
@@ -230,6 +235,8 @@ def create_player_offer(
         return RedirectResponse(url="/login", status_code=303)
     if user.tipo != "jogador":
         return RedirectResponse(url="/", status_code=303)
+    if room not in SUPPORTED_ROOMS:
+        raise HTTPException(status_code=400, detail="Sala/plataforma não suportada pelo SharkScope.")
 
     try:
         buyin_value = Decimal(str(buyin))
@@ -249,6 +256,7 @@ def create_player_offer(
         tournament = Tournament(
             nome=tournament_name,
             sharkscope_id=room,
+            plataforma=room,
             buyin=buyin_value,
             data_hora=data_hora,
             status="Aberto",
@@ -376,6 +384,15 @@ async def bid_create(request: Request, db: Session = Depends(get_db)):
         offer = db.execute(offer_stmt).scalars().first()
         if not offer or not offer.tournament:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+        buyin = Decimal(str(offer.tournament.buyin))
+        if buyin <= 0:
+            raise HTTPException(status_code=400, detail="Buy-in inválido para receber propostas.")
+        total_pct = Decimal(str(offer.total_disponivel_pct))
+        sold_pct = Decimal(str(offer.vendido_pct))
+        available_pct = total_pct - sold_pct
+        share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
+        if share_pct > available_pct:
+            raise HTTPException(status_code=400, detail="Percentual disponível insuficiente para esta proposta.")
 
         saldo_disp = Decimal(str(wallet.saldo_disponivel))
         if saldo_disp < amount:
@@ -442,8 +459,8 @@ async def bid_respond(
         amount = Decimal(str(bid.amount))
         saldo_bloq = Decimal(str(getattr(backer_wallet, "saldo_bloqueado", 0) or 0))
         if saldo_bloq < amount:
-            bid.status = "CANCELLED"
-            raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente; proposta cancelada.")
+            bid.status = "REJECTED"
+            raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente para processar a proposta.")
 
         if action == "REJECT":
             backer_wallet.saldo_bloqueado = saldo_bloq - amount

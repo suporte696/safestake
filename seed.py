@@ -40,13 +40,15 @@ def seed_tournaments(db: Session, player: User) -> None:
             data_hora=now + timedelta(days=1, hours=3),
             status="Aberto",
             sharkscope_id="PokerStars",
+            plataforma="PokerStars",
         ),
         Tournament(
             nome="Bounty Builder",
             buyin=Decimal("55.00"),
             data_hora=now + timedelta(days=2, hours=6),
             status="Aberto",
-            sharkscope_id="GG Poker",
+            sharkscope_id="GGPoker",
+            plataforma="GGPoker",
         ),
         Tournament(
             nome="High Roller Turbo",
@@ -54,6 +56,7 @@ def seed_tournaments(db: Session, player: User) -> None:
             data_hora=now + timedelta(days=3, hours=4),
             status="Aberto",
             sharkscope_id="888poker",
+            plataforma="888poker",
         ),
     ]
     db.add_all(tournaments)
