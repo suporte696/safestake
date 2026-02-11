@@ -57,11 +57,14 @@
               R$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
             </span>
           </div>
+          <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
+            {{ user.nome[:1]|upper }}
+          </div>
           <a
             href="/dashboard"
             class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
           >
-            {{ user.nome }}
+            Olá, {{ user.nome }}
           </a>
           <a
             href="/logout"
@@ -75,6 +78,12 @@
             class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
           >
             Entrar
+          </a>
+          <a
+            href="/register"
+            class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+          >
+            Criar Conta
           </a>
           {% endif %}
         </div>

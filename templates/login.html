@@ -3,7 +3,7 @@
 {% block title %}Login | SAFE STAKE{% endblock %}
 
 {% block content %}
-<section class="max-w-lg mx-auto bg-black border border-white/10 rounded-2xl p-8 space-y-6">
+<section class="max-w-lg mx-auto bg-black border border-white/10 rounded-2xl p-8 space-y-6 glow">
   <div class="text-center space-y-2">
     <img
       src="/static/img/safestake-01.svg"
@@ -20,17 +20,25 @@
   </div>
   {% endif %}
 
-  <form class="space-y-4" method="post" action="/login">
+  {% if info %}
+  <div class="border border-emerald-500/40 text-emerald-200 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    {{ info }}
+  </div>
+  {% endif %}
+
+  <form class="space-y-4" method="post" action="{% if show_forgot_password %}/forgot-password{% else %}/login{% endif %}">
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Email</label>
       <input
         type="email"
         name="email"
         placeholder="voce@safestake.com"
+        value="{{ email or '' }}"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
         required
       />
     </div>
+    {% if not show_forgot_password %}
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Senha</label>
       <input
@@ -41,12 +49,25 @@
         required
       />
     </div>
+    {% endif %}
     <button
       type="submit"
       class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
     >
-      Entrar
+      {% if show_forgot_password %}Enviar instruções{% else %}Entrar{% endif %}
     </button>
   </form>
+
+  <div class="pt-2 space-y-1 text-center text-sm">
+    {% if show_forgot_password %}
+    <a href="/login" class="text-gray-400 hover:text-emerald-400 transition">Voltar para login</a>
+    {% else %}
+    <a href="/forgot-password" class="text-gray-400 hover:text-emerald-400 transition">Esqueci minha senha</a>
+    {% endif %}
+    <p class="text-gray-500">
+      Ainda não tem conta?
+      <a href="/register" class="text-emerald-400 hover:text-emerald-300">Criar conta</a>
+    </p>
+  </div>
 </section>
 {% endblock %}

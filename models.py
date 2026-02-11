@@ -24,10 +24,11 @@ class User(Base):
     )
     sharkscope_link: Mapped[str | None] = mapped_column(String(255))
     pix_key: Mapped[str | None] = mapped_column(String(120))
-    cpf_cnpj: Mapped[str | None] = mapped_column(String(20), unique=True)
-    telefone: Mapped[str | None] = mapped_column(String(30))
+    cpf_cnpj: Mapped[str | None] = mapped_column(String(14), unique=True)
+    telefone: Mapped[str | None] = mapped_column(String(20))
     endereco_completo: Mapped[str | None] = mapped_column(String(255))
     data_nascimento: Mapped[date | None] = mapped_column(Date)
+    bio: Mapped[str | None] = mapped_column(String(255))
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     wallet: Mapped["Wallet"] = relationship(back_populates="user", uselist=False)
