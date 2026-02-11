@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from constants import SUPPORTED_ROOMS
 from db import get_db
-from models import Investment, StakeBid, StakeOffer, Tournament, User, Wallet
+from models import CryptoTransaction, Investment, StakeBid, StakeOffer, Tournament, User, Wallet
 from routers.auth import fetch_current_user
 
 templates = Jinja2Templates(directory="templates")
@@ -148,6 +148,16 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             }
         )
 
+    crypto_transactions = []
+    if user:
+        stmt_tx = (
+            select(CryptoTransaction)
+            .where(CryptoTransaction.user_id == user.id)
+            .order_by(CryptoTransaction.created_at.desc(), CryptoTransaction.id.desc())
+            .limit(10)
+        )
+        crypto_transactions = db.execute(stmt_tx).scalars().all()
+
     bids_received = []
     my_bids = []
     if user.tipo == "jogador":
@@ -180,6 +190,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "stakes": stakes,
             "bids_received": bids_received,
             "my_bids": my_bids,
+            "crypto_transactions": crypto_transactions,
             "user": user,
             "requires_auth": True,
         },

@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 from decimal import Decimal
 from typing import Any
 
@@ -30,10 +31,12 @@ async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
     callback_url = os.getenv("COINGATE_CALLBACK_URL", "http://localhost:8000/webhooks/coingate")
     success_url = os.getenv("COINGATE_SUCCESS_URL", "http://localhost:8000/dashboard")
     cancel_url = os.getenv("COINGATE_CANCEL_URL", "http://localhost:8000/dashboard")
+    price_amount = str(Decimal(str(amount_brl)).quantize(Decimal("0.01")))
     payload = {
         "price_amount": str(Decimal(str(amount_brl)).quantize(Decimal("0.01"))),
         "price_currency": "BRL",
         "receive_currency": os.getenv("COINGATE_RECEIVE_CURRENCY", "DO_NOT_CONVERT"),
+        "order_id": f"safe-stake-{secrets.token_hex(4)}-{price_amount.replace('.', '')}",
         "callback_url": callback_url,
         "success_url": success_url,
         "cancel_url": cancel_url,
@@ -56,6 +59,22 @@ async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
     return {"order_id": str(data["id"]), "payment_url": payment_url, "raw": data}
 
 
+async def get_order(order_id: str) -> dict[str, Any]:
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(f"{_get_api_url()}/orders/{order_id}", headers=_build_headers())
+        response.raise_for_status()
+        return response.json()
+
+
+def map_coingate_status(status_raw: str | None) -> str:
+    normalized = str(status_raw or "").strip().lower()
+    if normalized in {"paid", "confirmed"}:
+        return "PAID"
+    if normalized in {"expired", "canceled", "cancelled", "invalid"}:
+        return "EXPIRED"
+    return "PENDING"
+
+
 def verify_signature(payload: Any, signature: str | None) -> bool:
     if not signature:
         return False
@@ -70,4 +89,7 @@ def verify_signature(payload: Any, signature: str | None) -> bool:
     else:
         payload_raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     expected = hmac.new(secret.encode("utf-8"), payload_raw, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, signature)
+    normalized = signature.strip()
+    if normalized.lower().startswith("sha256="):
+        normalized = normalized.split("=", maxsplit=1)[1]
+    return hmac.compare_digest(expected, normalized)
