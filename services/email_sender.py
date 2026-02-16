@@ -1,8 +1,11 @@
 import os
 import smtplib
+import logging
 from email.message import EmailMessage
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 def _to_bool(value: str | None, default: bool = False) -> bool:
@@ -56,8 +59,16 @@ def _send_with_mailtrap_api(to_email: str, code: str) -> bool:
             json=payload,
             timeout=10.0,
         )
-        return response.status_code in {200, 201, 202}
-    except Exception:
+        if response.status_code in {200, 201, 202}:
+            return True
+        logger.warning(
+            "Mailtrap API falhou: status=%s body=%s",
+            response.status_code,
+            response.text[:500],
+        )
+        return False
+    except Exception as exc:
+        logger.exception("Erro ao enviar email pela Mailtrap API: %s", exc)
         return False
 
 
@@ -120,5 +131,6 @@ def _send_with_smtp(to_email: str, code: str) -> bool:
                 smtp.login(smtp_user, smtp_password)
             smtp.send_message(message)
         return True
-    except Exception:
+    except Exception as exc:
+        logger.exception("Erro ao enviar email por SMTP: %s", exc)
         return False

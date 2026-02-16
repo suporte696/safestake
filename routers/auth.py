@@ -412,10 +412,14 @@ def register(
             verification,
             info=f"Modo teste: use o código {code} para validar seu cadastro.",
         )
-    verification.consumed_at = datetime.now(timezone.utc)
-    db.commit()
-    request.session.pop("pending_verification_id", None)
-    return render_register(request, "Não foi possível enviar o email de verificação.", form_data)
+    return render_register_verify(
+        request,
+        verification,
+        info=(
+            "Cadastro iniciado, mas não conseguimos enviar o email de verificação agora. "
+            "Tente reenviar o código em instantes."
+        ),
+    )
 
 
 @router.get("/register/verify", response_class=HTMLResponse)

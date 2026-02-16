@@ -5,6 +5,7 @@ import os
 import secrets
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 
@@ -27,13 +28,37 @@ def _build_headers() -> dict[str, str]:
     }
 
 
+def _resolve_env_value(name: str, default: str) -> str:
+    return os.path.expandvars(os.getenv(name, default)).strip()
+
+
+def _get_redirect_url(name: str, default: str) -> str:
+    value = _resolve_env_value(name, default)
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise RuntimeError(f"{name} inválida: configure uma URL absoluta (http/https).")
+    return value
+
+
+def _extract_error_detail(response: httpx.Response) -> str:
+    try:
+        data = response.json()
+    except Exception:
+        return response.text or "sem detalhes no corpo da resposta"
+    if isinstance(data, dict):
+        for key in ("message", "error", "errors", "detail"):
+            if key in data:
+                return json.dumps(data[key], ensure_ascii=False)
+    return json.dumps(data, ensure_ascii=False)
+
+
 async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
-    callback_url = os.getenv("COINGATE_CALLBACK_URL", "http://localhost:8000/webhooks/coingate")
-    success_url = os.getenv("COINGATE_SUCCESS_URL", "http://localhost:8000/dashboard")
-    cancel_url = os.getenv("COINGATE_CANCEL_URL", "http://localhost:8000/dashboard")
+    callback_url = _get_redirect_url("COINGATE_CALLBACK_URL", "http://localhost:8000/webhooks/coingate")
+    success_url = _get_redirect_url("COINGATE_SUCCESS_URL", "http://localhost:8000/dashboard")
+    cancel_url = _get_redirect_url("COINGATE_CANCEL_URL", "http://localhost:8000/dashboard")
     price_amount = str(Decimal(str(amount_brl)).quantize(Decimal("0.01")))
     payload = {
-        "price_amount": str(Decimal(str(amount_brl)).quantize(Decimal("0.01"))),
+        "price_amount": price_amount,
         "price_currency": "BRL",
         "receive_currency": os.getenv("COINGATE_RECEIVE_CURRENCY", "DO_NOT_CONVERT"),
         "order_id": f"safe-stake-{secrets.token_hex(4)}-{price_amount.replace('.', '')}",
@@ -42,12 +67,16 @@ async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
         "cancel_url": cancel_url,
         "title": "SAFE STAKE - Crypto Deposit",
         "description": f"Depósito cripto SAFE STAKE para {user_email}",
-        "token": user_email,
+        "purchaser_email": user_email,
     }
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         response = await client.post(f"{_get_api_url()}/orders", headers=_build_headers(), json=payload)
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = _extract_error_detail(exc.response)
+            raise RuntimeError(f"CoinGate retornou {exc.response.status_code}: {detail}") from exc
         data = response.json()
 
     payment_url = data.get("payment_url") or data.get("payment_url_primary")
