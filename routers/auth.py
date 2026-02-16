@@ -37,8 +37,16 @@ def get_env_int(name: str, default: int) -> int:
         return default
 
 
+def get_env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 REGISTER_CODE_TTL_MINUTES = get_env_int("REGISTER_CODE_TTL_MINUTES", 10)
 REGISTER_MAX_ATTEMPTS = get_env_int("REGISTER_MAX_ATTEMPTS", 5)
+REGISTER_REQUIRE_EMAIL_VERIFICATION = get_env_bool("REGISTER_REQUIRE_EMAIL_VERIFICATION", True)
 
 
 def get_password_hash(password: str) -> str:
@@ -357,6 +365,33 @@ def register(
         else:
             error = "Este CPF/CNPJ já está cadastrado."
         return render_register(request, error, form_data)
+
+    if not REGISTER_REQUIRE_EMAIL_VERIFICATION:
+        new_user = User(
+            nome=nome.strip(),
+            email=normalized_email,
+            password_hash=get_password_hash(senha),
+            tipo=selected_type,
+            cpf_cnpj=normalized_doc,
+            telefone=normalized_phone,
+            sharkscope_link=sharkscope_link.strip() if selected_type == "jogador" and sharkscope_link else None,
+            endereco_completo=None,
+            data_nascimento=None,
+            bio=None,
+            is_verified=True,
+        )
+        db.add(new_user)
+        db.flush()
+        db.add(
+            Wallet(
+                user_id=new_user.id,
+                saldo_disponivel=Decimal("0"),
+                saldo_bloqueado=Decimal("0"),
+                saldo_em_jogo=Decimal("0"),
+            )
+        )
+        db.commit()
+        return RedirectResponse(url="/login?registered=1", status_code=303)
 
     now = datetime.now(timezone.utc)
     code = f"{secrets.randbelow(1_000_000):06d}"
