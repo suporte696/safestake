@@ -45,21 +45,69 @@ def _extract_error_detail(response: httpx.Response) -> str:
         data = response.json()
     except Exception:
         return response.text or "sem detalhes no corpo da resposta"
-    if isinstance(data, dict):
-        for key in ("message", "error", "errors", "detail"):
-            if key in data:
-                return json.dumps(data[key], ensure_ascii=False)
     return json.dumps(data, ensure_ascii=False)
+
+
+def _fetch_brl_conversion_rate(target_currency: str) -> Decimal:
+    with httpx.Client(timeout=10.0) as client:
+        response = client.get("https://open.er-api.com/v6/latest/BRL")
+        response.raise_for_status()
+        data = response.json()
+    if str(data.get("result", "")).lower() != "success":
+        raise RuntimeError("serviço de câmbio retornou resposta inválida")
+    rates = data.get("rates")
+    if not isinstance(rates, dict):
+        raise RuntimeError("serviço de câmbio sem tabela de taxas")
+    rate_raw = rates.get(target_currency)
+    if rate_raw is None:
+        raise RuntimeError(f"taxa BRL->{target_currency} indisponível")
+    try:
+        rate = Decimal(str(rate_raw))
+    except Exception as exc:
+        raise RuntimeError("taxa de câmbio inválida") from exc
+    if rate <= 0:
+        raise RuntimeError("taxa de câmbio não positiva")
+    return rate
+
+
+def _resolve_price_from_brl(amount_brl: float) -> tuple[str, str]:
+    target_currency = os.getenv("COINGATE_PRICE_CURRENCY", "USD").strip().upper()
+    amount_brl_decimal = Decimal(str(amount_brl))
+    if target_currency == "BRL":
+        # CoinGate sandbox não aceita BRL como moeda de preço.
+        raise RuntimeError("COINGATE_PRICE_CURRENCY=BRL não é suportada pela CoinGate. Use USD, EUR ou GBP.")
+
+    if target_currency:
+        explicit_rate = os.getenv(f"COINGATE_BRL_TO_{target_currency}_RATE")
+        if explicit_rate:
+            try:
+                rate = Decimal(str(explicit_rate))
+            except Exception as exc:
+                raise RuntimeError(f"Taxa COINGATE_BRL_TO_{target_currency}_RATE inválida.") from exc
+            if rate <= 0:
+                raise RuntimeError(f"Taxa COINGATE_BRL_TO_{target_currency}_RATE deve ser maior que zero.")
+        else:
+            try:
+                rate = _fetch_brl_conversion_rate(target_currency)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Não foi possível converter BRL para {target_currency}. Configure "
+                    f"COINGATE_BRL_TO_{target_currency}_RATE para fallback manual."
+                ) from exc
+        converted = (amount_brl_decimal * rate).quantize(Decimal("0.01"))
+        return str(converted), target_currency
+
+    raise RuntimeError("COINGATE_PRICE_CURRENCY não configurada.")
 
 
 async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
     callback_url = _get_redirect_url("COINGATE_CALLBACK_URL", "http://localhost:8000/webhooks/coingate")
     success_url = _get_redirect_url("COINGATE_SUCCESS_URL", "http://localhost:8000/dashboard")
     cancel_url = _get_redirect_url("COINGATE_CANCEL_URL", "http://localhost:8000/dashboard")
-    price_amount = str(Decimal(str(amount_brl)).quantize(Decimal("0.01")))
+    price_amount, price_currency = _resolve_price_from_brl(amount_brl)
     payload = {
         "price_amount": price_amount,
-        "price_currency": "BRL",
+        "price_currency": price_currency,
         "receive_currency": os.getenv("COINGATE_RECEIVE_CURRENCY", "DO_NOT_CONVERT"),
         "order_id": f"safe-stake-{secrets.token_hex(4)}-{price_amount.replace('.', '')}",
         "callback_url": callback_url,
