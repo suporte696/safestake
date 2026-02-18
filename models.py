@@ -4,7 +4,7 @@ from decimal import Decimal
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, validates
 
-from constants import SUPPORTED_ROOMS
+from constants import normalize_supported_room
 
 
 class Base(DeclarativeBase):
@@ -30,9 +30,29 @@ class User(Base):
     data_nascimento: Mapped[date | None] = mapped_column(Date)
     bio: Mapped[str | None] = mapped_column(String(255))
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    blocked_reason: Mapped[str | None] = mapped_column(String(255))
+    blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     wallet: Mapped["Wallet"] = relationship(back_populates="user", uselist=False)
     crypto_transactions: Mapped[list["CryptoTransaction"]] = relationship(back_populates="user")
+    documents: Mapped[list["UserDocument"]] = relationship(
+        back_populates="user",
+        foreign_keys="UserDocument.user_id",
+    )
+    reviewed_documents: Mapped[list["UserDocument"]] = relationship(
+        back_populates="reviewed_by_user",
+        foreign_keys="UserDocument.reviewed_by",
+    )
+    notifications: Mapped[list["Notification"]] = relationship(back_populates="user")
+    call_schedules: Mapped[list["CallSchedule"]] = relationship(
+        back_populates="user",
+        foreign_keys="CallSchedule.user_id",
+    )
+    reviewed_call_schedules: Mapped[list["CallSchedule"]] = relationship(
+        back_populates="reviewed_by_user",
+        foreign_keys="CallSchedule.reviewed_by",
+    )
 
 
 class EmailVerificationCode(Base):
@@ -48,6 +68,30 @@ class EmailVerificationCode(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class UserDocument(Base):
+    __tablename__ = "user_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    document_file_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    selfie_file_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum("PENDING", "APPROVED", "REJECTED", name="user_document_status"),
+        nullable=False,
+        default="PENDING",
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(255))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped[User] = relationship(back_populates="documents", foreign_keys=[user_id])
+    reviewed_by_user: Mapped[User | None] = relationship(
+        back_populates="reviewed_documents",
+        foreign_keys=[reviewed_by],
+    )
 
 
 class Wallet(Base):
@@ -78,12 +122,14 @@ class Tournament(Base):
 
     offers: Mapped[list["StakeOffer"]] = relationship(back_populates="tournament")
     results: Mapped[list["MatchResult"]] = relationship(back_populates="tournament")
+    escrows: Mapped[list["TournamentEscrow"]] = relationship(back_populates="tournament")
 
     @validates("plataforma")
     def validate_plataforma(self, _key: str, value: str) -> str:
-        if value not in SUPPORTED_ROOMS:
+        normalized_value = normalize_supported_room(value)
+        if not normalized_value:
             raise ValueError("Plataforma não suportada pelo SharkScope.")
-        return value
+        return normalized_value
 
 
 class StakeOffer(Base):
@@ -95,11 +141,39 @@ class StakeOffer(Base):
     markup: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=1.0)
     total_disponivel_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=100)
     vendido_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
+    escrow_status: Mapped[str] = mapped_column(
+        Enum("COLLECTING", "COMPLETE", "REFUNDED", name="offer_escrow_status"),
+        nullable=False,
+        default="COLLECTING",
+    )
 
     tournament: Mapped[Tournament] = relationship(back_populates="offers")
     player: Mapped[User] = relationship()
     investments: Mapped[list["Investment"]] = relationship(back_populates="offer")
     bids: Mapped[list["StakeBid"]] = relationship(back_populates="offer")
+    escrows: Mapped[list["TournamentEscrow"]] = relationship(back_populates="offer")
+
+
+class TournamentEscrow(Base):
+    __tablename__ = "tournament_escrows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False, index=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("stake_offers.id"), nullable=False, index=True)
+    total_required: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    total_collected: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
+    status: Mapped[str] = mapped_column(
+        Enum("COLLECTING", "COMPLETE", "REFUNDED", name="escrow_status"),
+        nullable=False,
+        default="COLLECTING",
+    )
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    tournament: Mapped[Tournament] = relationship(back_populates="escrows")
+    offer: Mapped[StakeOffer] = relationship(back_populates="escrows")
 
 
 class Investment(Base):
@@ -162,8 +236,82 @@ class MatchResult(Base):
     player_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     posicao_final: Mapped[int] = mapped_column(Integer, nullable=False)
     valor_premio: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    valor_enviado: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=0)
     print_url: Mapped[str | None] = mapped_column(String(255))
+    comprovante_url: Mapped[str | None] = mapped_column(String(255))
+    review_status: Mapped[str] = mapped_column(
+        Enum("PENDING", "APPROVED", "REJECTED", name="match_result_review_status"),
+        nullable=False,
+        default="PENDING",
+    )
+    rejection_reason: Mapped[str | None] = mapped_column(String(255))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     admin_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     tournament: Mapped[Tournament] = relationship(back_populates="results")
-    player: Mapped[User] = relationship()
+    player: Mapped[User] = relationship(foreign_keys=[player_id])
+    distributions: Mapped[list["PrizeDistribution"]] = relationship(back_populates="match_result")
+
+
+class PrizeDistribution(Base):
+    __tablename__ = "prize_distributions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    match_result_id: Mapped[int] = mapped_column(ForeignKey("match_results.id"), nullable=False, index=True)
+    recipient_type: Mapped[str] = mapped_column(
+        Enum("BACKER", "PLAYER", "PLATFORM", name="prize_distribution_recipient_type"),
+        nullable=False,
+    )
+    recipient_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    pct_base: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0)
+    invested_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    gross_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    platform_fee: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    net_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    processed_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    match_result: Mapped[MatchResult] = relationship(back_populates="distributions")
+    recipient_user: Mapped[User | None] = relationship(foreign_keys=[recipient_user_id])
+    processed_by_admin: Mapped[User | None] = relationship(foreign_keys=[processed_by_admin_id])
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    type: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    message: Mapped[str] = mapped_column(String(255), nullable=False)
+    action_url: Mapped[str | None] = mapped_column(String(255))
+    read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped[User] = relationship(back_populates="notifications")
+
+
+class CallSchedule(Base):
+    __tablename__ = "call_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    scheduled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum("PENDING", "CONFIRMED", "CANCELLED", name="call_schedule_status"),
+        nullable=False,
+        default="PENDING",
+    )
+    notes: Mapped[str | None] = mapped_column(String(255))
+    call_link: Mapped[str | None] = mapped_column(String(255))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped[User] = relationship(back_populates="call_schedules", foreign_keys=[user_id])
+    reviewed_by_user: Mapped[User | None] = relationship(
+        back_populates="reviewed_call_schedules",
+        foreign_keys=[reviewed_by],
+    )

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Admin KYC | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+  <div class="space-y-2">
+    <h1 class="font-title text-3xl uppercase">Painel Admin - KYC</h1>
+    <p class="text-gray-400 text-sm">Aprovação manual de documento oficial e selfie com documento.</p>
+    <a
+      href="/admin/results"
+      class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
+    >
+      Ir para revisão de resultados
+    </a>
+    <a
+      href="/admin/calls"
+      class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
+    >
+      Ir para agendamento de calls
+    </a>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Pendentes</h2>
+      <span class="text-xs text-gray-400">{{ pending_docs|length }} solicitações</span>
+    </div>
+
+    {% if not pending_docs %}
+    <p class="text-sm text-gray-500">Sem documentos pendentes no momento.</p>
+    {% else %}
+    <div class="grid gap-4">
+      {% for doc in pending_docs %}
+      <article class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-400">Usuário #{{ doc.user.id }} · {{ doc.user.tipo|upper }}</p>
+            <p class="text-lg font-semibold">{{ doc.user.nome }}</p>
+            <p class="text-xs text-gray-400">{{ doc.user.email }}</p>
+          </div>
+          <p class="text-xs text-gray-500">Enviado em {{ doc.created_at.strftime("%d/%m/%Y %H:%M") if doc.created_at else "-" }}</p>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <a href="{{ doc.document_file_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir documento oficial
+          </a>
+          <a href="{{ doc.selfie_file_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir selfie com documento
+          </a>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <form method="post" action="/admin/kyc/{{ doc.id }}/approve">
+            <button class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold">Aprovar</button>
+          </form>
+          <form method="post" action="/admin/kyc/{{ doc.id }}/reject" class="flex gap-2">
+            <input
+              type="text"
+              name="reason"
+              placeholder="Motivo da rejeição (opcional)"
+              class="bg-black border border-white/10 rounded-full px-3 py-2 text-xs w-64"
+            />
+            <button class="px-4 py-2 rounded-full border border-red-500 text-red-300 hover:bg-red-500/10">
+              Rejeitar
+            </button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <h2 class="font-title text-xl uppercase">Últimas revisões</h2>
+    {% if not reviewed_docs %}
+    <p class="text-sm text-gray-500">Sem revisões concluídas.</p>
+    {% else %}
+    <div class="space-y-2">
+      {% for doc in reviewed_docs %}
+      <div class="flex flex-wrap items-center justify-between text-sm border border-white/10 rounded-xl px-4 py-3">
+        <span>{{ doc.user.nome }} · #{{ doc.user.id }}</span>
+        <span class="{% if doc.status == 'APPROVED' %}text-emerald-400{% else %}text-red-300{% endif %}">
+          {{ doc.status }}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

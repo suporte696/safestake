@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Agendamento de Call | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="max-w-4xl mx-auto space-y-8">
+  <div class="space-y-2">
+    <h1 class="font-title text-3xl uppercase">Agendamento de Call</h1>
+    <p class="text-sm text-gray-400">Solicite um horário para call com o time/admin.</p>
+  </div>
+
+  {% if request.query_params.get("created") == "1" %}
+  <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    Solicitação criada com sucesso. Aguarde confirmação.
+  </div>
+  {% endif %}
+
+  <form method="post" action="/player/calls" class="bg-black border border-white/10 rounded-2xl p-6 grid gap-4">
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Data e hora desejada</label>
+      <input
+        type="datetime-local"
+        name="scheduled_at"
+        required
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+      />
+    </div>
+
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Observações (opcional)</label>
+      <textarea
+        name="notes"
+        rows="3"
+        placeholder="Ex.: melhor horário, assunto, timezone..."
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+      ></textarea>
+    </div>
+
+    <button
+      type="submit"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Solicitar agendamento
+    </button>
+  </form>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Minhas solicitações</h2>
+      <span class="text-xs text-gray-400">{{ schedules|length }} registros</span>
+    </div>
+    {% if not schedules %}
+    <p class="text-sm text-gray-500">Nenhuma solicitação ainda.</p>
+    {% else %}
+    <div class="grid gap-3">
+      {% for item in schedules %}
+      <div class="border border-white/10 rounded-xl p-4 text-sm space-y-1">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="font-mono">{{ item.scheduled_at.strftime("%d/%m/%Y %H:%M") if item.scheduled_at else "-" }}</p>
+          <span
+            class="text-xs px-3 py-1 rounded-full border
+              {% if item.status == 'CONFIRMED' %}
+              border-emerald-400/50 text-emerald-400
+              {% elif item.status == 'CANCELLED' %}
+              border-red-500/50 text-red-300
+              {% else %}
+              border-amber-400/50 text-amber-400
+              {% endif %}"
+          >
+            {{ item.status }}
+          </span>
+        </div>
+        {% if item.notes %}
+        <p class="text-gray-300">{{ item.notes }}</p>
+        {% endif %}
+        {% if item.call_link %}
+        <a href="{{ item.call_link }}" target="_blank" class="text-emerald-400 hover:text-emerald-300 text-xs">
+          Link da call
+        </a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

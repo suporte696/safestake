@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Resultados | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="space-y-2">
+      <h1 class="font-title text-3xl uppercase">Revisão de Resultados</h1>
+      <p class="text-sm text-gray-400">
+        Aprove/rejeite resultados enviados pelos jogadores e execute a distribuição financeira.
+      </p>
+    </div>
+    <a
+      href="/admin/dashboard"
+      class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+    >
+      Voltar ao KYC
+    </a>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Pendentes</h2>
+      <span class="text-xs text-gray-400">{{ pending_results|length }} aguardando revisão</span>
+    </div>
+
+    {% if not pending_results %}
+    <p class="text-sm text-gray-500">Sem resultados pendentes no momento.</p>
+    {% else %}
+    <div class="grid gap-4">
+      {% for result in pending_results %}
+      <article class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-400">Torneio #{{ result.tournament.id }} · {{ result.tournament.plataforma }}</p>
+            <p class="text-lg font-semibold">{{ result.tournament.nome }}</p>
+            <p class="text-xs text-gray-400">
+              Jogador: {{ result.player.nome }} · Posição {{ result.posicao_final }}
+            </p>
+          </div>
+          <p class="text-xs text-gray-500">
+            Enviado em {{ result.submitted_at.strftime("%d/%m/%Y %H:%M") if result.submitted_at else "-" }}
+          </p>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <div class="border border-white/10 rounded-xl p-4">
+            <p class="text-gray-400">Valor prêmio</p>
+            <p class="font-mono text-lg">R$ {{ "%.2f"|format(result.valor_premio) }}</p>
+          </div>
+          <div class="border border-white/10 rounded-xl p-4">
+            <p class="text-gray-400">Valor enviado para distribuição</p>
+            <p class="font-mono text-lg">R$ {{ "%.2f"|format(result.valor_enviado) }}</p>
+          </div>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <a href="{{ result.print_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir screenshot do resultado
+          </a>
+          <a href="{{ result.comprovante_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir comprovante de envio
+          </a>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <form method="post" action="/admin/results/{{ result.id }}/approve">
+            <button class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold">
+              Aprovar e distribuir
+            </button>
+          </form>
+          <form method="post" action="/admin/results/{{ result.id }}/reject" class="flex gap-2">
+            <input
+              type="text"
+              name="reason"
+              placeholder="Motivo da rejeição (opcional)"
+              class="bg-black border border-white/10 rounded-full px-3 py-2 text-xs w-64"
+            />
+            <button class="px-4 py-2 rounded-full border border-red-500 text-red-300 hover:bg-red-500/10">
+              Rejeitar
+            </button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <h2 class="font-title text-xl uppercase">Histórico recente</h2>
+    {% if not reviewed_results %}
+    <p class="text-sm text-gray-500">Sem resultados revisados ainda.</p>
+    {% else %}
+    <div class="grid gap-3">
+      {% for result in reviewed_results %}
+      <article class="border border-white/10 rounded-xl p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <p class="text-sm">
+            {{ result.tournament.nome }} · {{ result.player.nome }}
+          </p>
+          <span class="text-xs px-3 py-1 rounded-full border {% if result.review_status == 'APPROVED' %}border-emerald-400/50 text-emerald-400{% else %}border-red-500/50 text-red-300{% endif %}">
+            {{ result.review_status }}
+          </span>
+        </div>
+
+        {% set items = distribution_by_result.get(result.id, []) %}
+        {% if items %}
+        <div class="grid md:grid-cols-3 gap-2 text-xs">
+          {% for item in items %}
+          <div class="border border-white/10 rounded-lg px-3 py-2">
+            <p class="text-gray-400">{{ item.recipient_type }}</p>
+            <p class="font-mono">Líquido R$ {{ "%.2f"|format(item.net_amount) }}</p>
+            {% if item.platform_fee and item.platform_fee > 0 %}
+            <p class="text-gray-500">Fee R$ {{ "%.2f"|format(item.platform_fee) }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if result.rejection_reason %}
+        <p class="text-xs text-red-300">Motivo: {{ result.rejection_reason }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

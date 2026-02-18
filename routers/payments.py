@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from db import get_db
 from models import CryptoTransaction, Wallet
-from routers.auth import fetch_current_user
+from routers.auth import ensure_user_not_blocked, fetch_current_user
 from services.coingate import create_order, get_order, map_coingate_status, verify_signature
 
 router = APIRouter()
@@ -71,6 +71,7 @@ async def deposit_crypto(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
+    ensure_user_not_blocked(user)
 
     payload = await request.json()
     amount_raw = payload.get("amount")
@@ -115,6 +116,7 @@ def deposit_crypto_history(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar transações.")
+    ensure_user_not_blocked(user)
     stmt = (
         select(CryptoTransaction)
         .where(CryptoTransaction.user_id == user.id)
@@ -129,6 +131,7 @@ async def refresh_deposit_status(order_id: str, request: Request, db: Session = 
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para atualizar transações.")
+    ensure_user_not_blocked(user)
 
     tx_stmt = (
         select(CryptoTransaction)

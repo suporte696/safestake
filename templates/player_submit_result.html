@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}Enviar Resultado | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto space-y-6">
+  <div class="space-y-2">
+    <h1 class="font-title text-3xl uppercase">Enviar Resultado da Partida</h1>
+    <p class="text-gray-400 text-sm">Após o envio, o resultado fica pendente de revisão do admin.</p>
+  </div>
+
+  {% if request.query_params.get("sent") == "1" %}
+  <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    Resultado enviado com sucesso e marcado como pendente de revisão.
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/player/results" enctype="multipart/form-data" class="bg-black border border-white/10 rounded-2xl p-6 grid gap-4">
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Torneio</label>
+      <select
+        name="tournament_id"
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        required
+      >
+        <option value="">Selecione</option>
+        {% for offer in offers %}
+        <option value="{{ offer.tournament.id }}">
+          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Posição final</label>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          name="posicao_final"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Valor prêmio (R$)</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          name="valor_premio"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+    </div>
+
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Valor enviado para distribuição (R$)</label>
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        name="valor_enviado"
+        required
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+      />
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Screenshot do resultado</label>
+        <input
+          type="file"
+          name="resultado_print"
+          accept=".jpg,.jpeg,.png,.webp,.pdf"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-emerald-400 file:px-3 file:py-1 file:text-black"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Comprovante de envio/pagamento</label>
+        <input
+          type="file"
+          name="comprovante_pagamento"
+          accept=".jpg,.jpeg,.png,.webp,.pdf"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-emerald-400 file:px-3 file:py-1 file:text-black"
+        />
+      </div>
+    </div>
+
+    <button
+      type="submit"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Enviar para revisão
+    </button>
+  </form>
+</section>
+{% endblock %}

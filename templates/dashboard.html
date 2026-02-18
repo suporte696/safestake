@@ -4,6 +4,11 @@
 
 {% block content %}
 <section class="space-y-8">
+  {% if user.is_blocked %}
+  <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+    Conta bloqueada: {{ user.blocked_reason or "entre em contato com o admin." }}
+  </div>
+  {% endif %}
   <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
     <div class="space-y-2">
       <img

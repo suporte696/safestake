@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -7,10 +7,12 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from constants import SUPPORTED_ROOMS
+from constants import normalize_supported_room
 from db import get_db
-from models import CryptoTransaction, Investment, StakeBid, StakeOffer, Tournament, User, Wallet
-from routers.auth import fetch_current_user
+from models import CryptoTransaction, Investment, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet
+from routers.auth import ensure_user_not_blocked, fetch_current_user, is_user_kyc_approved
+from routers.escrow import sync_offer_escrow
+from services.jobs import run_scheduled_jobs
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -41,6 +43,8 @@ def serialize_offer(offer: StakeOffer) -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 def marketplace(request: Request, db: Session = Depends(get_db)):
+    with db.begin():
+        run_scheduled_jobs(db)
     user = fetch_current_user(request, db)
     wallet_summary = None
     if user and user.wallet:
@@ -111,6 +115,8 @@ def serialize_bid(bid: StakeBid) -> dict:
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
+    with db.begin():
+        run_scheduled_jobs(db)
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
@@ -246,7 +252,11 @@ def create_player_offer(
         return RedirectResponse(url="/login", status_code=303)
     if user.tipo != "jogador":
         return RedirectResponse(url="/", status_code=303)
-    if room not in SUPPORTED_ROOMS:
+    ensure_user_not_blocked(user)
+    if not is_user_kyc_approved(user, db):
+        raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para criar ofertas.")
+    normalized_room = normalize_supported_room(room)
+    if not normalized_room:
         raise HTTPException(status_code=400, detail="Sala/plataforma não suportada pelo SharkScope.")
 
     try:
@@ -266,8 +276,8 @@ def create_player_offer(
     with db.begin():
         tournament = Tournament(
             nome=tournament_name,
-            sharkscope_id=room,
-            plataforma=room,
+            sharkscope_id=normalized_room,
+            plataforma=normalized_room,
             buyin=buyin_value,
             data_hora=data_hora,
             status="Aberto",
@@ -280,8 +290,22 @@ def create_player_offer(
             markup=markup_value,
             total_disponivel_pct=total_pct_value,
             vendido_pct=Decimal("0"),
+            escrow_status="COLLECTING",
         )
         db.add(offer)
+        db.flush()
+        total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
+        deadline_at = data_hora or (datetime.now(timezone.utc) + timedelta(hours=24))
+        db.add(
+            TournamentEscrow(
+                tournament_id=tournament.id,
+                offer_id=offer.id,
+                total_required=total_required,
+                total_collected=Decimal("0"),
+                status="COLLECTING",
+                deadline_at=deadline_at,
+            )
+        )
 
     return RedirectResponse(url="/player/offers", status_code=303)
 
@@ -305,6 +329,9 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         user = fetch_current_user(request, db)
         if not user:
             raise HTTPException(status_code=401, detail="Faça login para investir.")
+        ensure_user_not_blocked(user)
+        if not is_user_kyc_approved(user, db):
+            raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para investir.")
         if not user.wallet:
             raise HTTPException(status_code=400, detail="Carteira não encontrada.")
 
@@ -317,6 +344,8 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         offer = db.execute(offer_stmt).scalars().first()
         if not offer or not offer.tournament:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+        if offer.escrow_status != "COLLECTING":
+            raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para investimento.")
 
         buyin = Decimal(str(offer.tournament.buyin))
         markup = Decimal(str(offer.markup))
@@ -345,6 +374,7 @@ async def invest(request: Request, db: Session = Depends(get_db)):
             lucro_recebido=Decimal("0"),
         )
         db.add(investment)
+        sync_offer_escrow(db, offer)
 
     return {"success": True}
 
@@ -380,6 +410,9 @@ async def bid_create(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Faça login para enviar proposta.")
     if user.tipo != "apoiador":
         raise HTTPException(status_code=403, detail="Apenas apoiadores podem enviar bids.")
+    ensure_user_not_blocked(user)
+    if not is_user_kyc_approved(user, db):
+        raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para enviar propostas.")
 
     with db.begin():
         wallet_stmt = select(Wallet).where(Wallet.user_id == user.id).with_for_update()
@@ -395,6 +428,8 @@ async def bid_create(request: Request, db: Session = Depends(get_db)):
         offer = db.execute(offer_stmt).scalars().first()
         if not offer or not offer.tournament:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+        if offer.escrow_status != "COLLECTING":
+            raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para propostas.")
         buyin = Decimal(str(offer.tournament.buyin))
         if buyin <= 0:
             raise HTTPException(status_code=400, detail="Buy-in inválido para receber propostas.")
@@ -441,6 +476,9 @@ async def bid_respond(
         raise HTTPException(status_code=401, detail="Faça login.")
     if user.tipo != "jogador":
         raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
+    ensure_user_not_blocked(user)
+    if not is_user_kyc_approved(user, db):
+        raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para responder propostas.")
 
     with db.begin():
         bid_stmt = (
@@ -461,6 +499,8 @@ async def bid_respond(
         offer = bid.offer
         if offer.player_id != user.id:
             raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
+        if offer.escrow_status != "COLLECTING":
+            raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para propostas.")
 
         backer_wallet_stmt = select(Wallet).where(Wallet.user_id == bid.backer_id).with_for_update()
         backer_wallet = db.execute(backer_wallet_stmt).scalars().first()
@@ -510,5 +550,6 @@ async def bid_respond(
         )
         db.add(investment)
         bid.status = "ACCEPTED"
+        sync_offer_escrow(db, offer)
 
     return {"success": True, "status": "ACCEPTED"}

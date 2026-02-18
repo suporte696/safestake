@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -32,7 +32,7 @@ def seed_users(db: Session) -> tuple[User, User]:
 
 
 def seed_tournaments(db: Session, player: User) -> None:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     tournaments = [
         Tournament(
             nome="Sunday Million",

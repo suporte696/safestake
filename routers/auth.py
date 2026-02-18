@@ -6,7 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Form, Request, Security
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import APIKeyCookie
 from fastapi.templating import Jinja2Templates
@@ -15,8 +15,9 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import EmailVerificationCode, User, Wallet
+from models import EmailVerificationCode, User, UserDocument, Wallet
 from services.email_sender import send_verification_code_email
+from services.storage import move_temp_file_to_kyc, save_upload_to_temp
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -222,6 +223,43 @@ def get_wallet_summary(user: User | None) -> dict | None:
     }
 
 
+def get_latest_user_document(user_id: int, db: Session) -> UserDocument | None:
+    stmt = (
+        select(UserDocument)
+        .where(UserDocument.user_id == user_id)
+        .order_by(UserDocument.created_at.desc(), UserDocument.id.desc())
+    )
+    return db.execute(stmt).scalars().first()
+
+
+def is_user_kyc_approved(user: User | None, db: Session) -> bool:
+    if not user:
+        return False
+    if user.tipo == "admin":
+        return True
+    latest_doc = get_latest_user_document(user.id, db)
+    return bool(latest_doc and latest_doc.status == "APPROVED")
+
+
+def ensure_user_kyc_approved(user: User | None, db: Session) -> None:
+    if is_user_kyc_approved(user, db):
+        return
+    raise HTTPException(status_code=403, detail="Seu KYC ainda não foi aprovado pelo admin.")
+
+
+def ensure_admin_user(user: User | None) -> None:
+    if not user or user.tipo != "admin":
+        raise HTTPException(status_code=403, detail="Acesso restrito ao administrador.")
+
+
+def ensure_user_not_blocked(user: User | None) -> None:
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para continuar.")
+    if user.is_blocked:
+        detail = user.blocked_reason or "Conta bloqueada. Contate o suporte/admin."
+        raise HTTPException(status_code=403, detail=detail)
+
+
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
@@ -313,7 +351,7 @@ def register_form(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_class=HTMLResponse)
-def register(
+async def register(
     request: Request,
     nome: str = Form(...),
     email: str = Form(...),
@@ -323,6 +361,8 @@ def register(
     confirmar_senha: str = Form(...),
     tipo: str = Form(...),
     sharkscope_link: str = Form(""),
+    official_document: UploadFile = File(...),
+    official_selfie: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     form_data = {
@@ -366,6 +406,12 @@ def register(
             error = "Este CPF/CNPJ já está cadastrado."
         return render_register(request, error, form_data)
 
+    try:
+        doc_temp_url = await save_upload_to_temp(official_document, kind="document")
+        selfie_temp_url = await save_upload_to_temp(official_selfie, kind="selfie")
+    except ValueError as exc:
+        return render_register(request, str(exc), form_data)
+
     if not REGISTER_REQUIRE_EMAIL_VERIFICATION:
         new_user = User(
             nome=nome.strip(),
@@ -382,6 +428,14 @@ def register(
         )
         db.add(new_user)
         db.flush()
+        db.add(
+            UserDocument(
+                user_id=new_user.id,
+                document_file_url=move_temp_file_to_kyc(doc_temp_url, user_id=new_user.id, kind="document"),
+                selfie_file_url=move_temp_file_to_kyc(selfie_temp_url, user_id=new_user.id, kind="selfie"),
+                status="PENDING",
+            )
+        )
         db.add(
             Wallet(
                 user_id=new_user.id,
@@ -408,6 +462,8 @@ def register(
             "endereco_completo": None,
             "data_nascimento": None,
             "bio": None,
+            "doc_temp_url": doc_temp_url,
+            "selfie_temp_url": selfie_temp_url,
         },
         ensure_ascii=True,
     )
@@ -538,6 +594,29 @@ def register_verify_submit(
     )
     db.add(new_user)
     db.flush()
+    doc_temp_url = str(payload.get("doc_temp_url", "")).strip()
+    selfie_temp_url = str(payload.get("selfie_temp_url", "")).strip()
+    if not doc_temp_url or not selfie_temp_url:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
+        return render_register(request, "Documentação pendente ausente. Refaça seu cadastro.")
+    try:
+        document_file_url = move_temp_file_to_kyc(doc_temp_url, user_id=new_user.id, kind="document")
+        selfie_file_url = move_temp_file_to_kyc(selfie_temp_url, user_id=new_user.id, kind="selfie")
+    except ValueError:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
+        return render_register(request, "Não foi possível processar seus arquivos. Refaça seu cadastro.")
+    db.add(
+        UserDocument(
+            user_id=new_user.id,
+            document_file_url=document_file_url,
+            selfie_file_url=selfie_file_url,
+            status="PENDING",
+        )
+    )
     db.add(
         Wallet(
             user_id=new_user.id,

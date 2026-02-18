@@ -45,12 +45,46 @@
           <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
           {% if user and user.tipo == "jogador" %}
           <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
+          <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
+          <a class="hover:text-emerald-400 transition" href="/player/calls">Agendar Call</a>
+          {% endif %}
+          {% if user and user.tipo == "admin" %}
+          <a class="hover:text-emerald-400 transition" href="/admin/dashboard">Painel Admin</a>
+          <a class="hover:text-emerald-400 transition" href="/admin/results">Resultados</a>
+          <a class="hover:text-emerald-400 transition" href="/admin/calls">Calls</a>
           {% endif %}
           <a class="hover:text-emerald-400 transition" href="#">Ranking</a>
         </nav>
 
         <div class="flex items-center gap-4">
           {% if user %}
+          <div class="relative">
+            <button
+              id="notificationBell"
+              class="w-9 h-9 rounded-full border border-white/20 hover:border-emerald-400 text-white flex items-center justify-center relative"
+              title="Notificações"
+              type="button"
+            >
+              <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                <path d="M15 17h5l-1.4-1.4a2 2 0 0 1-.6-1.4V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"></path>
+                <path d="M9 17a3 3 0 0 0 6 0"></path>
+              </svg>
+              <span
+                id="notificationBadge"
+                class="hidden absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-[10px] leading-[18px] text-white text-center"
+              ></span>
+            </button>
+            <div
+              id="notificationPanel"
+              class="hidden absolute right-0 mt-2 w-96 max-w-[90vw] bg-black border border-white/10 rounded-xl shadow-xl z-50"
+            >
+              <div class="p-3 border-b border-white/10 flex items-center justify-between">
+                <p class="text-sm font-semibold">Notificações</p>
+                <button id="refreshNotifications" class="text-xs text-emerald-400 hover:text-emerald-300">Atualizar</button>
+              </div>
+              <div id="notificationList" class="max-h-80 overflow-auto p-2 space-y-2"></div>
+            </div>
+          </div>
           <div class="hidden sm:flex flex-col text-right text-xs text-gray-400">
             <span>Carteira</span>
             <span class="font-mono text-emerald-400 text-sm">
@@ -144,6 +178,107 @@
     {% if requires_auth and not user %}
     <script>
       window.location.href = "/login";
+    </script>
+    {% endif %}
+
+    {% if user %}
+    <script>
+      const bell = document.getElementById("notificationBell");
+      const panel = document.getElementById("notificationPanel");
+      const badge = document.getElementById("notificationBadge");
+      const list = document.getElementById("notificationList");
+      const refreshBtn = document.getElementById("refreshNotifications");
+
+      async function fetchUnreadCount() {
+        try {
+          const res = await fetch("/api/notifications/unread-count");
+          if (!res.ok) return;
+          const data = await res.json();
+          const unread = Number(data.unread || 0);
+          if (unread > 0) {
+            badge.textContent = unread > 99 ? "99+" : String(unread);
+            badge.classList.remove("hidden");
+          } else {
+            badge.classList.add("hidden");
+          }
+        } catch (_err) {}
+      }
+
+      async function markAsRead(id) {
+        try {
+          await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+        } catch (_err) {}
+      }
+
+      async function fetchNotifications() {
+        if (!list) return;
+        list.innerHTML = `<div class="text-xs text-gray-500 px-2 py-2">Carregando...</div>`;
+        try {
+          const res = await fetch("/api/notifications");
+          if (!res.ok) {
+            list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Falha ao carregar notificações.</div>`;
+            return;
+          }
+          const data = await res.json();
+          const items = data.notifications || [];
+          if (!items.length) {
+            list.innerHTML = `<div class="text-xs text-gray-500 px-2 py-2">Sem notificações.</div>`;
+            return;
+          }
+
+          list.innerHTML = "";
+          items.forEach((item) => {
+            const card = document.createElement("button");
+            card.type = "button";
+            card.className =
+              "w-full text-left p-3 rounded-lg border border-white/10 hover:border-emerald-400 transition bg-[#0b0b0b]";
+            const created = item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-";
+            card.innerHTML = `
+              <div class="flex items-center justify-between gap-2">
+                <p class="text-sm font-semibold ${item.read ? "text-white" : "text-emerald-300"}">${item.title}</p>
+                <span class="text-[10px] text-gray-500">${created}</span>
+              </div>
+              <p class="text-xs text-gray-300 mt-1">${item.message}</p>
+            `;
+            card.addEventListener("click", async () => {
+              if (!item.read) {
+                await markAsRead(item.id);
+              }
+              if (item.action_url) {
+                window.location.href = item.action_url;
+                return;
+              }
+              await fetchNotifications();
+              await fetchUnreadCount();
+            });
+            list.appendChild(card);
+          });
+        } catch (_err) {
+          list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Erro inesperado ao carregar notificações.</div>`;
+        }
+      }
+
+      bell?.addEventListener("click", async () => {
+        panel?.classList.toggle("hidden");
+        if (panel && !panel.classList.contains("hidden")) {
+          await fetchNotifications();
+          await fetchUnreadCount();
+        }
+      });
+
+      refreshBtn?.addEventListener("click", async () => {
+        await fetchNotifications();
+        await fetchUnreadCount();
+      });
+
+      document.addEventListener("click", (event) => {
+        if (!panel || !bell) return;
+        if (!panel.contains(event.target) && !bell.contains(event.target)) {
+          panel.classList.add("hidden");
+        }
+      });
+
+      fetchUnreadCount();
     </script>
     {% endif %}
   </body>
