@@ -1,3 +1,4 @@
+import argparse
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -114,6 +115,24 @@ def seed():
         db.commit()
 
 
+def reset_database() -> None:
+    engine = get_engine()
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+
+
 if __name__ == "__main__":
-    seed()
-    print("Seed concluído com sucesso.")
+    parser = argparse.ArgumentParser(description="Reset do banco e seed opcional de dados demo.")
+    parser.add_argument(
+        "--with-demo-data",
+        action="store_true",
+        help="Insere dados fictícios de demonstração após resetar o banco.",
+    )
+    args = parser.parse_args()
+
+    if args.with_demo_data:
+        seed()
+        print("Banco resetado com dados demo.")
+    else:
+        reset_database()
+        print("Banco resetado sem dados fictícios.")
