@@ -1,4 +1,5 @@
 import argparse
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -120,6 +121,27 @@ def reset_database() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
+    admin_name = os.getenv("DEFAULT_ADMIN_NAME", "Administrador")
+    admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@safestake.com").strip().lower()
+    admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
+
+    SessionLocal = get_sessionmaker()
+    with SessionLocal() as db:
+        admin = User(
+            nome=admin_name,
+            email=admin_email,
+            password_hash=get_password_hash(admin_password),
+            tipo="admin",
+            is_verified=True,
+        )
+        admin.wallet = Wallet(
+            saldo_disponivel=Decimal("0.00"),
+            saldo_bloqueado=Decimal("0.00"),
+            saldo_em_jogo=Decimal("0.00"),
+        )
+        db.add(admin)
+        db.commit()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Reset do banco e seed opcional de dados demo.")
@@ -135,4 +157,7 @@ if __name__ == "__main__":
         print("Banco resetado com dados demo.")
     else:
         reset_database()
+        default_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@safestake.com").strip().lower()
+        default_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin123")
         print("Banco resetado sem dados fictícios.")
+        print(f"Admin padrão criado: {default_email} / {default_password}")
