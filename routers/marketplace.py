@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from constants import normalize_supported_room
 from db import get_db
-from models import CryptoTransaction, Investment, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet
+from models import Investment, PixTransaction, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet
 from routers.auth import ensure_user_not_blocked, fetch_current_user, is_user_kyc_approved
 from routers.escrow import sync_offer_escrow
 from services.jobs import run_scheduled_jobs
@@ -139,30 +139,36 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         investments = db.execute(stmt).scalars().all()
 
     stakes = []
+    total_investido = Decimal("0")
+    total_recebido = Decimal("0")
     for investment in investments:
         offer = investment.offer
         tournament = offer.tournament if offer else None
         player = offer.player if offer else None
+        valor_investido = Decimal(str(investment.valor_investido or 0))
+        lucro_recebido = Decimal(str(investment.lucro_recebido or 0))
+        total_investido += valor_investido
+        total_recebido += lucro_recebido
         stakes.append(
             {
                 "tournament": tournament.nome if tournament else "Torneio",
                 "player": player.nome if player else "Player",
-                "valor": investment.valor_investido,
+                "valor": valor_investido,
                 "pct": investment.pct_comprada,
-                "resultado": investment.lucro_recebido,
+                "resultado": lucro_recebido,
                 "status": tournament.status if tournament else "Aberto",
             }
         )
 
-    crypto_transactions = []
+    pix_transactions = []
     if user:
         stmt_tx = (
-            select(CryptoTransaction)
-            .where(CryptoTransaction.user_id == user.id)
-            .order_by(CryptoTransaction.created_at.desc(), CryptoTransaction.id.desc())
+            select(PixTransaction)
+            .where(PixTransaction.user_id == user.id)
+            .order_by(PixTransaction.created_at.desc(), PixTransaction.id.desc())
             .limit(10)
         )
-        crypto_transactions = db.execute(stmt_tx).scalars().all()
+        pix_transactions = db.execute(stmt_tx).scalars().all()
 
     bids_received = []
     my_bids = []
@@ -196,7 +202,9 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "stakes": stakes,
             "bids_received": bids_received,
             "my_bids": my_bids,
-            "crypto_transactions": crypto_transactions,
+            "pix_transactions": pix_transactions,
+            "total_investido": total_investido,
+            "total_recebido": total_recebido,
             "user": user,
             "requires_auth": True,
         },

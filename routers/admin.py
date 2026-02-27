@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, UserDocument, Wallet
+from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, Tournament, UserDocument, Wallet
 from routers.auth import ensure_admin_user, fetch_current_user, get_wallet_summary
 
 templates = Jinja2Templates(directory="templates")
@@ -42,6 +42,52 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     documents = db.execute(stmt).scalars().all()
     pending_docs = [doc for doc in documents if doc.status == "PENDING"]
     reviewed_docs = [doc for doc in documents if doc.status != "PENDING"][:30]
+
+    active_tournaments_stmt = (
+        select(Tournament)
+        .where(Tournament.status.in_(("Aberto", "Jogando")))
+        .order_by(Tournament.data_hora.asc().nulls_last(), Tournament.id.desc())
+    )
+    active_tournaments = db.execute(active_tournaments_stmt).scalars().all()
+
+    finalized_tournaments_stmt = (
+        select(Tournament)
+        .where(Tournament.status == "Finalizado")
+        .order_by(Tournament.data_hora.desc().nulls_last(), Tournament.id.desc())
+    )
+    finalized_tournaments = db.execute(finalized_tournaments_stmt).scalars().all()
+    finalized_ids = [item.id for item in finalized_tournaments]
+
+    investments_by_tournament: dict[int, list[Investment]] = {}
+    if finalized_ids:
+        investment_stmt = (
+            select(Investment)
+            .join(StakeOffer, Investment.offer_id == StakeOffer.id)
+            .where(StakeOffer.tournament_id.in_(finalized_ids))
+            .options(joinedload(Investment.backer), joinedload(Investment.offer))
+            .order_by(StakeOffer.tournament_id.asc(), Investment.id.asc())
+        )
+        for investment in db.execute(investment_stmt).scalars().all():
+            if not investment.offer:
+                continue
+            investments_by_tournament.setdefault(investment.offer.tournament_id, []).append(investment)
+
+    settlement_rows_by_tournament: dict[int, list[dict]] = {}
+    for tournament in finalized_tournaments:
+        rows: list[dict] = []
+        for inv in investments_by_tournament.get(tournament.id, []):
+            rows.append(
+                {
+                    "investment_id": inv.id,
+                    "apoiador_nome": inv.backer.nome if inv.backer else f"Usuário #{inv.backer_id}",
+                    "valor_investido": Decimal(str(inv.valor_investido or 0)),
+                    "valor_receber": Decimal(str(inv.lucro_recebido or 0)),
+                    "pix_key": (inv.backer.pix_key if inv.backer and inv.backer.pix_key else "-"),
+                    "payout_status": inv.payout_status,
+                }
+            )
+        settlement_rows_by_tournament[tournament.id] = rows
+
     return templates.TemplateResponse(
         "admin_dashboard.html",
         {
@@ -50,9 +96,83 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "wallet": get_wallet_summary(user),
             "pending_docs": pending_docs,
             "reviewed_docs": reviewed_docs,
+            "active_tournaments": active_tournaments,
+            "finalized_tournaments": finalized_tournaments,
+            "settlement_rows_by_tournament": settlement_rows_by_tournament,
             "requires_auth": True,
         },
     )
+
+
+@router.post("/api/tournaments/{tournament_id}/close")
+async def close_tournament(tournament_id: int, request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para continuar.")
+    ensure_admin_user(user)
+
+    payload = await request.json()
+    prize_raw = payload.get("prize_amount")
+    if prize_raw is None:
+        raise HTTPException(status_code=400, detail="Campo prize_amount é obrigatório.")
+
+    try:
+        prize_amount = q_money(Decimal(str(prize_raw)))
+    except InvalidOperation:
+        raise HTTPException(status_code=400, detail="Valor de prêmio inválido.")
+    if prize_amount < 0:
+        raise HTTPException(status_code=400, detail="Valor de prêmio não pode ser negativo.")
+
+    total_allocated = Decimal("0")
+    updated_count = 0
+    with db.begin():
+        tournament_stmt = select(Tournament).where(Tournament.id == tournament_id).with_for_update()
+        tournament = db.execute(tournament_stmt).scalars().first()
+        if not tournament:
+            raise HTTPException(status_code=404, detail="Torneio não encontrado.")
+
+        investment_stmt = (
+            select(Investment)
+            .join(StakeOffer, Investment.offer_id == StakeOffer.id)
+            .where(StakeOffer.tournament_id == tournament_id)
+            .with_for_update()
+        )
+        investments = db.execute(investment_stmt).scalars().all()
+        for inv in investments:
+            pct = Decimal(str(inv.pct_comprada or 0))
+            valor_receber = q_money(prize_amount * pct / Decimal("100"))
+            inv.lucro_recebido = valor_receber
+            inv.payout_status = "PENDING"
+            total_allocated += valor_receber
+            updated_count += 1
+
+        tournament.status = "Finalizado"
+
+    return {
+        "success": True,
+        "tournament_id": tournament_id,
+        "tournament_status": "Finalizado",
+        "prize_amount": float(prize_amount),
+        "allocated_amount": float(q_money(total_allocated)),
+        "investments_updated": updated_count,
+    }
+
+
+@router.post("/api/investments/{investment_id}/mark-paid")
+def mark_investment_paid(investment_id: int, request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para continuar.")
+    ensure_admin_user(user)
+
+    with db.begin():
+        stmt = select(Investment).where(Investment.id == investment_id).with_for_update()
+        investment = db.execute(stmt).scalars().first()
+        if not investment:
+            raise HTTPException(status_code=404, detail="Investment não encontrado.")
+        investment.payout_status = "PAID"
+
+    return {"success": True, "investment_id": investment_id, "payout_status": "PAID"}
 
 
 @router.post("/admin/kyc/{document_id}/approve")

@@ -5,8 +5,8 @@
 {% block content %}
 <section class="space-y-8">
   <div class="space-y-2">
-    <h1 class="font-title text-3xl uppercase">Painel Admin - KYC</h1>
-    <p class="text-gray-400 text-sm">Aprovação manual de documento oficial e selfie com documento.</p>
+    <h1 class="font-title text-3xl uppercase">Painel Admin</h1>
+    <p class="text-gray-400 text-sm">Encerramento de torneios, split de pagamentos Pix e gestão de KYC.</p>
     <a
       href="/admin/results"
       class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
@@ -19,6 +19,133 @@
     >
       Ir para agendamento de calls
     </a>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Torneios ativos</h2>
+      <span class="text-xs text-gray-400">{{ active_tournaments|length }} em andamento</span>
+    </div>
+
+    {% if not active_tournaments %}
+    <p class="text-sm text-gray-500">Sem torneios ativos no momento.</p>
+    {% else %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Torneio</th>
+            <th class="py-3">Buy-in</th>
+            <th class="py-3">Data</th>
+            <th class="py-3">Status</th>
+            <th class="py-3 text-right">Ação</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for tournament in active_tournaments %}
+          <tr class="hover:bg-white/5">
+            <td class="py-3">{{ tournament.nome }}</td>
+            <td class="py-3 font-mono">R$ {{ "%.2f"|format(tournament.buyin) }}</td>
+            <td class="py-3 text-gray-400">{{ tournament.data_hora.strftime("%d/%m/%Y %H:%M") if tournament.data_hora else "-" }}</td>
+            <td class="py-3">
+              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">{{ tournament.status }}</span>
+            </td>
+            <td class="py-3 text-right">
+              <button
+                type="button"
+                class="open-close-modal px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs"
+                data-tournament-id="{{ tournament.id }}"
+                data-tournament-name="{{ tournament.nome }}"
+              >
+                Encerrar Torneio
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Acerto de Contas (Split)</h2>
+      <span class="text-xs text-gray-400">{{ finalized_tournaments|length }} torneios finalizados</span>
+    </div>
+    {% if not finalized_tournaments %}
+    <p class="text-sm text-gray-500">Nenhum torneio finalizado ainda.</p>
+    {% else %}
+    <div class="space-y-3">
+      {% for tournament in finalized_tournaments %}
+      <article class="border border-white/10 rounded-xl">
+        <button
+          type="button"
+          class="w-full text-left px-4 py-3 flex items-center justify-between hover:bg-white/5 transition split-toggle"
+          data-target="split-{{ tournament.id }}"
+        >
+          <div>
+            <p class="text-sm text-gray-200">{{ tournament.nome }}</p>
+            <p class="text-xs text-gray-500">Torneio #{{ tournament.id }}</p>
+          </div>
+          <span class="text-xs text-emerald-400">Expandir</span>
+        </button>
+
+        <div id="split-{{ tournament.id }}" class="hidden px-4 pb-4">
+          {% set rows = settlement_rows_by_tournament.get(tournament.id, []) %}
+          {% if not rows %}
+          <p class="text-sm text-gray-500 pt-2">Sem investimentos associados.</p>
+          {% else %}
+          <div class="overflow-x-auto pt-2">
+            <table class="w-full text-sm text-left text-gray-300">
+              <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+                <tr>
+                  <th class="py-3">Apoiador</th>
+                  <th class="py-3">Valor Investido</th>
+                  <th class="py-3">Valor a Receber</th>
+                  <th class="py-3">Chave Pix</th>
+                  <th class="py-3">Status</th>
+                  <th class="py-3 text-right">Ação</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-white/5">
+                {% for row in rows %}
+                <tr>
+                  <td class="py-3">{{ row.apoiador_nome }}</td>
+                  <td class="py-3 font-mono">R$ {{ "%.2f"|format(row.valor_investido) }}</td>
+                  <td class="py-3 font-mono text-emerald-400">R$ {{ "%.2f"|format(row.valor_receber) }}</td>
+                  <td class="py-3 font-mono text-xs">{{ row.pix_key }}</td>
+                  <td class="py-3">
+                    {% if row.payout_status == "PAID" %}
+                    <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">Pago</span>
+                    {% else %}
+                    <span class="px-3 py-1 rounded-full text-xs border border-amber-400/40 text-amber-300">Pendente</span>
+                    {% endif %}
+                  </td>
+                  <td class="py-3 text-right">
+                    {% if row.payout_status != "PAID" %}
+                    <button
+                      type="button"
+                      class="mark-paid px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs"
+                      data-investment-id="{{ row.investment_id }}"
+                    >
+                      Marcar como Pago
+                    </button>
+                    {% else %}
+                    -
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
   </div>
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
@@ -91,4 +218,134 @@
     {% endif %}
   </div>
 </section>
+
+<div id="closeTournamentModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/70"></div>
+  <div class="relative max-w-md mx-auto mt-24 bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-title text-lg uppercase text-emerald-400">Encerrar Torneio</h3>
+      <button id="closeTournamentModalBtn" type="button" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <p id="closeTournamentText" class="text-sm text-gray-300"></p>
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Valor do Prêmio (R$)</label>
+      <input
+        id="closeTournamentPrize"
+        type="number"
+        step="0.01"
+        min="0"
+        placeholder="0.00"
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+      />
+    </div>
+    <button
+      id="confirmCloseTournament"
+      type="button"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Confirmar Encerramento
+    </button>
+  </div>
+</div>
+
+<script>
+  const closeModal = document.getElementById("closeTournamentModal");
+  const closeModalBtn = document.getElementById("closeTournamentModalBtn");
+  const closeText = document.getElementById("closeTournamentText");
+  const closePrizeInput = document.getElementById("closeTournamentPrize");
+  const confirmCloseBtn = document.getElementById("confirmCloseTournament");
+  let selectedTournamentId = null;
+
+  function openCloseModal(tournamentId, tournamentName) {
+    selectedTournamentId = tournamentId;
+    if (closeText) {
+      closeText.textContent = `Informe o prêmio total para finalizar "${tournamentName}".`;
+    }
+    if (closePrizeInput) {
+      closePrizeInput.value = "";
+    }
+    closeModal?.classList.remove("hidden");
+  }
+
+  function hideCloseModal() {
+    closeModal?.classList.add("hidden");
+    selectedTournamentId = null;
+  }
+
+  document.querySelectorAll(".open-close-modal").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-tournament-id");
+      const name = btn.getAttribute("data-tournament-name") || "Torneio";
+      if (!id) return;
+      openCloseModal(id, name);
+    });
+  });
+
+  closeModalBtn?.addEventListener("click", hideCloseModal);
+  closeModal?.addEventListener("click", (event) => {
+    if (event.target === closeModal || event.target === closeModal.firstElementChild) {
+      hideCloseModal();
+    }
+  });
+
+  confirmCloseBtn?.addEventListener("click", async () => {
+    if (!selectedTournamentId) return;
+    const prizeAmount = Number(closePrizeInput?.value || 0);
+    if (Number.isNaN(prizeAmount) || prizeAmount < 0) {
+      window.showToast("Informe um valor de prêmio válido.", "error");
+      return;
+    }
+    confirmCloseBtn.disabled = true;
+    try {
+      const response = await fetch(`/api/tournaments/${selectedTournamentId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prize_amount: prizeAmount }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        window.showToast(data.detail || "Erro ao encerrar torneio.", "error");
+        return;
+      }
+      window.showToast("Torneio encerrado e split calculado.");
+      window.location.reload();
+    } catch (_error) {
+      window.showToast("Falha de conexão.", "error");
+    } finally {
+      confirmCloseBtn.disabled = false;
+    }
+  });
+
+  document.querySelectorAll(".split-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-target");
+      if (!targetId) return;
+      const target = document.getElementById(targetId);
+      if (!target) return;
+      target.classList.toggle("hidden");
+    });
+  });
+
+  document.querySelectorAll(".mark-paid").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const investmentId = btn.getAttribute("data-investment-id");
+      if (!investmentId) return;
+      btn.disabled = true;
+      try {
+        const response = await fetch(`/api/investments/${investmentId}/mark-paid`, { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) {
+          window.showToast(data.detail || "Erro ao marcar pagamento.", "error");
+          return;
+        }
+        window.showToast("Pagamento marcado como concluído.");
+        window.location.reload();
+      } catch (_error) {
+        window.showToast("Falha de conexão.", "error");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  });
+</script>
 {% endblock %}

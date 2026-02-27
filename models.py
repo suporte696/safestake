@@ -36,6 +36,7 @@ class User(Base):
 
     wallet: Mapped["Wallet"] = relationship(back_populates="user", uselist=False)
     crypto_transactions: Mapped[list["CryptoTransaction"]] = relationship(back_populates="user")
+    pix_transactions: Mapped[list["PixTransaction"]] = relationship(back_populates="user")
     documents: Mapped[list["UserDocument"]] = relationship(
         back_populates="user",
         foreign_keys="UserDocument.user_id",
@@ -185,6 +186,11 @@ class Investment(Base):
     valor_investido: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     pct_comprada: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
     lucro_recebido: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
+    payout_status: Mapped[str] = mapped_column(
+        Enum("PENDING", "PAID", name="investment_payout_status"),
+        nullable=False,
+        default="PENDING",
+    )
 
     offer: Mapped[StakeOffer] = relationship(back_populates="investments")
     backer: Mapped[User] = relationship()
@@ -226,6 +232,19 @@ class CryptoTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped[User] = relationship(back_populates="crypto_transactions")
+
+
+class PixTransaction(Base):
+    __tablename__ = "pix_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    order_nsu: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped[User] = relationship(back_populates="pix_transactions")
 
 
 class MatchResult(Base):

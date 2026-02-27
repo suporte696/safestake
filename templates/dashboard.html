@@ -17,7 +17,7 @@
         class="h-6"
       />
       <h1 class="font-title text-3xl uppercase">Dashboard do Apoiador</h1>
-      <p class="text-gray-300">Controle sua carteira e acompanhe a performance dos seus stakes.</p>
+      <p class="text-gray-300">Controle seus aportes e acompanhe o histórico de retornos.</p>
     </div>
     <button
       id="openDepositModal"
@@ -27,56 +27,41 @@
     </button>
   </div>
 
-  <div class="grid gap-6 md:grid-cols-3">
+  <div class="grid gap-6 md:grid-cols-2">
     <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Saldo disponível</p>
+      <p class="text-xs text-gray-400">Total Investido</p>
       <p class="text-3xl font-mono text-emerald-400 mt-2">
-        R$ {{ "%.2f"|format(wallet.saldo_disponivel) }}
+        R$ {{ "%.2f"|format(total_investido) }}
       </p>
     </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Saldo bloqueado (propostas)</p>
-      <p class="text-3xl font-mono text-amber-400/90 mt-2">
-        R$ {{ "%.2f"|format(wallet.saldo_bloqueado) }}
-      </p>
-    </div>
-    <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Saldo em jogo</p>
+      <p class="text-xs text-gray-400">Total Recebido (Histórico)</p>
       <p class="text-3xl font-mono text-white mt-2">
-        R$ {{ "%.2f"|format(wallet.saldo_em_jogo) }}
+        R$ {{ "%.2f"|format(total_recebido) }}
       </p>
     </div>
   </div>
 
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="font-title text-xl uppercase">Depósitos Cripto</h2>
+      <h2 class="font-title text-xl uppercase">Depósitos InfinitePay</h2>
       <span class="text-xs text-gray-400">Últimas 10 transações</span>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left text-gray-300">
         <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
           <tr>
-            <th class="py-3">Pedido</th>
-            <th class="py-3">Valor BRL</th>
-            <th class="py-3">Valor Cripto</th>
+            <th class="py-3">Order NSU</th>
+            <th class="py-3">Valor</th>
             <th class="py-3">Status</th>
             <th class="py-3">Data</th>
-            <th class="py-3">Ação</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-white/5">
-          {% for tx in crypto_transactions %}
+          {% for tx in pix_transactions %}
           <tr class="hover:bg-white/5">
-            <td class="py-3 font-mono text-xs">{{ tx.coingate_order_id }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(tx.amount_fiat) }}</td>
-            <td class="py-3 font-mono">
-              {% if tx.amount_crypto and tx.currency_crypto %}
-              {{ tx.amount_crypto }} {{ tx.currency_crypto }}
-              {% else %}
-              -
-              {% endif %}
-            </td>
+            <td class="py-3 font-mono text-xs">{{ tx.order_nsu }}</td>
+            <td class="py-3 font-mono">R$ {{ "%.2f"|format(tx.amount) }}</td>
             <td class="py-3">
               {% if tx.status == "PAID" %}
               <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Pago</span>
@@ -87,23 +72,10 @@
               {% endif %}
             </td>
             <td class="py-3 text-gray-400">{{ tx.created_at.strftime("%d/%m %H:%M") if tx.created_at else "-" }}</td>
-            <td class="py-3">
-              {% if tx.status == "PENDING" %}
-              <button
-                type="button"
-                class="refresh-deposit px-3 py-1 rounded-lg border border-emerald-400/40 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs"
-                data-order-id="{{ tx.coingate_order_id }}"
-              >
-                Atualizar
-              </button>
-              {% else %}
-              -
-              {% endif %}
-            </td>
           </tr>
           {% else %}
           <tr>
-            <td colspan="6" class="py-6 text-center text-gray-500">Nenhum depósito registrado.</td>
+            <td colspan="4" class="py-6 text-center text-gray-500">Nenhum depósito registrado.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -257,7 +229,7 @@
       <h3 class="font-title text-lg uppercase text-emerald-400">Adicionar saldo</h3>
       <button id="closeDepositModal" type="button" class="text-gray-400 hover:text-white">✕</button>
     </div>
-    <p class="text-sm text-gray-400">Digite o valor em BRL para gerar o checkout cripto CoinGate.</p>
+    <p class="text-sm text-gray-400">Digite o valor em BRL para abrir o checkout da InfinitePay.</p>
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Valor (mínimo R$ 20,00)</label>
       <input
@@ -269,6 +241,7 @@
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
       />
     </div>
+
     <button
       id="submitDeposit"
       type="button"
@@ -276,7 +249,7 @@
     >
       Gerar pagamento
     </button>
-    <p class="text-xs text-gray-500">Você será redirecionado para concluir o pagamento em cripto.</p>
+    <p class="text-xs text-gray-500">Você será redirecionado para concluir o pagamento no checkout.</p>
   </div>
 </div>
 
@@ -311,7 +284,7 @@
     }
     submitDepositBtn.disabled = true;
     try {
-      const response = await fetch("/api/deposit/crypto", {
+      const response = await fetch("/api/deposit/infinitepay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),
@@ -321,49 +294,17 @@
         window.showToast(data.detail || "Erro ao criar depósito.", "error");
         return;
       }
-      if (!data.payment_url) {
-        window.showToast("Gateway não retornou URL de pagamento.", "error");
+      if (!data.checkout_url) {
+        window.showToast("Gateway não retornou URL de checkout.", "error");
         return;
       }
-      window.location.href = data.payment_url;
+      window.location.href = data.checkout_url;
     } catch (error) {
       window.showToast("Falha de conexão ao iniciar depósito.", "error");
     } finally {
       submitDepositBtn.disabled = false;
     }
   });
-
-  document.querySelectorAll(".refresh-deposit").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const orderId = btn.getAttribute("data-order-id");
-      if (!orderId) return;
-      btn.disabled = true;
-      try {
-        const response = await fetch("/api/deposit/crypto/" + encodeURIComponent(orderId) + "/refresh", {
-          method: "POST",
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          window.showToast(data.detail || "Erro ao atualizar status.", "error");
-          return;
-        }
-        window.showToast("Status atualizado.");
-        window.location.reload();
-      } catch (error) {
-        window.showToast("Falha de conexão.", "error");
-      } finally {
-        btn.disabled = false;
-      }
-    });
-  });
-
-  const urlParams = new URLSearchParams(window.location.search);
-  const paymentStatus = urlParams.get("status");
-  if (paymentStatus === "success") {
-    window.showToast("Pagamento recebido. Atualize status para refletir na carteira.");
-  } else if (paymentStatus === "cancel") {
-    window.showToast("Pagamento cancelado.", "error");
-  }
 
   document.querySelectorAll(".bid-respond").forEach((btn) => {
     btn.addEventListener("click", async () => {

@@ -176,7 +176,7 @@ def render_register(
             "user": None,
             "wallet": None,
             "error": error,
-            "form_data": form_data or {"tipo": "jogador"},
+            "form_data": form_data or {"tipo": "apoiador"},
         },
         status_code=400 if error else 200,
     )
@@ -357,9 +357,10 @@ async def register(
     email: str = Form(...),
     cpf_cnpj: str = Form(...),
     telefone: str = Form(...),
+    pix_key: str = Form(...),
     senha: str = Form(...),
     confirmar_senha: str = Form(...),
-    tipo: str = Form(...),
+    tipo: str = Form("apoiador"),
     sharkscope_link: str = Form(""),
     official_document: UploadFile = File(...),
     official_selfie: UploadFile = File(...),
@@ -370,21 +371,19 @@ async def register(
         "email": email,
         "cpf_cnpj": cpf_cnpj,
         "telefone": telefone,
-        "tipo": tipo,
-        "sharkscope_link": sharkscope_link,
+        "pix_key": pix_key,
+        "tipo": "apoiador",
     }
-    selected_type = tipo.strip().lower()
-    if selected_type not in {"jogador", "apoiador"}:
-        form_data["tipo"] = "jogador"
-        return render_register(request, "Tipo de usuário inválido.", form_data)
 
     normalized_email = email.strip().lower()
     normalized_doc = normalize_document(cpf_cnpj)
     normalized_phone = normalize_phone(telefone)
+    normalized_pix_key = pix_key.strip()
     form_data["email"] = normalized_email
     form_data["cpf_cnpj"] = normalized_doc
     form_data["telefone"] = format_phone(normalized_phone)
-    form_data["tipo"] = selected_type
+    form_data["pix_key"] = normalized_pix_key
+    form_data["tipo"] = "apoiador"
 
     if not EMAIL_PATTERN.match(normalized_email):
         return render_register(request, "Informe um email válido.", form_data)
@@ -392,6 +391,8 @@ async def register(
         return render_register(request, "CPF/CNPJ inválido.", form_data)
     if len(normalized_phone) not in {10, 11}:
         return render_register(request, "Telefone inválido. Informe DDD + número.", form_data)
+    if not normalized_pix_key:
+        return render_register(request, "A Chave Pix é obrigatória para cadastro.", form_data)
     if not is_strong_password(senha):
         return render_register(request, "A senha deve ter 8+ caracteres, letras e números.", form_data)
     if senha != confirmar_senha:
@@ -417,10 +418,11 @@ async def register(
             nome=nome.strip(),
             email=normalized_email,
             password_hash=get_password_hash(senha),
-            tipo=selected_type,
+            tipo="apoiador",
             cpf_cnpj=normalized_doc,
             telefone=normalized_phone,
-            sharkscope_link=sharkscope_link.strip() if selected_type == "jogador" and sharkscope_link else None,
+            pix_key=normalized_pix_key,
+            sharkscope_link=None,
             endereco_completo=None,
             data_nascimento=None,
             bio=None,
@@ -455,10 +457,11 @@ async def register(
             "nome": nome.strip(),
             "email": normalized_email,
             "password_hash": get_password_hash(senha),
-            "tipo": selected_type,
+            "tipo": "apoiador",
             "cpf_cnpj": normalized_doc,
             "telefone": normalized_phone,
-            "sharkscope_link": sharkscope_link.strip() if selected_type == "jogador" and sharkscope_link else None,
+            "pix_key": normalized_pix_key,
+            "sharkscope_link": None,
             "endereco_completo": None,
             "data_nascimento": None,
             "bio": None,
@@ -583,10 +586,11 @@ def register_verify_submit(
         nome=str(payload.get("nome", "")).strip(),
         email=email,
         password_hash=str(payload.get("password_hash", "")),
-        tipo=str(payload.get("tipo", "apoiador")),
+        tipo="apoiador",
         cpf_cnpj=cpf_cnpj,
         telefone=str(payload.get("telefone", "")).strip(),
-        sharkscope_link=payload.get("sharkscope_link"),
+        pix_key=str(payload.get("pix_key", "")).strip() or None,
+        sharkscope_link=None,
         endereco_completo=payload.get("endereco_completo"),
         data_nascimento=payload.get("data_nascimento"),
         bio=payload.get("bio"),
