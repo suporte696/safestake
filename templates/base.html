@@ -46,14 +46,11 @@
           {% if user and user.tipo == "jogador" %}
           <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
           <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
-          <a class="hover:text-emerald-400 transition" href="/player/calls">Agendar Call</a>
           {% endif %}
           {% if user and user.tipo == "admin" %}
           <a class="hover:text-emerald-400 transition" href="/admin/dashboard">Painel Admin</a>
           <a class="hover:text-emerald-400 transition" href="/admin/results">Resultados</a>
-          <a class="hover:text-emerald-400 transition" href="/admin/calls">Calls</a>
           {% endif %}
-          <a class="hover:text-emerald-400 transition" href="#">Ranking</a>
         </nav>
 
         <div class="flex items-center gap-4">
