@@ -13,7 +13,7 @@ from services.infinitepay import generate_checkout_link
 
 router = APIRouter()
 
-MIN_DEPOSIT_AMOUNT = Decimal("20.00")
+MIN_DEPOSIT_AMOUNT = Decimal("5.00")
 MAX_DEPOSIT_AMOUNT = Decimal("50000.00")
 
 

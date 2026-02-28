@@ -6,18 +6,17 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Security, UploadFile
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Security
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import APIKeyCookie
 from fastapi.templating import Jinja2Templates
 from passlib.context import CryptContext
-from sqlalchemy import or_, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
 from models import EmailVerificationCode, User, UserDocument, Wallet
 from services.email_sender import send_verification_code_email
-from services.storage import move_temp_file_to_kyc, save_upload_to_temp
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -235,10 +234,7 @@ def get_latest_user_document(user_id: int, db: Session) -> UserDocument | None:
 def is_user_kyc_approved(user: User | None, db: Session) -> bool:
     if not user:
         return False
-    if user.tipo == "admin":
-        return True
-    latest_doc = get_latest_user_document(user.id, db)
-    return bool(latest_doc and latest_doc.status == "APPROVED")
+    return True
 
 
 def ensure_user_kyc_approved(user: User | None, db: Session) -> None:
@@ -355,42 +351,24 @@ async def register(
     request: Request,
     nome: str = Form(...),
     email: str = Form(...),
-    cpf_cnpj: str = Form(...),
-    telefone: str = Form(...),
     pix_key: str = Form(...),
     senha: str = Form(...),
     confirmar_senha: str = Form(...),
-    tipo: str = Form("apoiador"),
-    sharkscope_link: str = Form(""),
-    official_document: UploadFile = File(...),
-    official_selfie: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     form_data = {
         "nome": nome,
         "email": email,
-        "cpf_cnpj": cpf_cnpj,
-        "telefone": telefone,
         "pix_key": pix_key,
-        "tipo": "apoiador",
     }
 
     normalized_email = email.strip().lower()
-    normalized_doc = normalize_document(cpf_cnpj)
-    normalized_phone = normalize_phone(telefone)
     normalized_pix_key = pix_key.strip()
     form_data["email"] = normalized_email
-    form_data["cpf_cnpj"] = normalized_doc
-    form_data["telefone"] = format_phone(normalized_phone)
     form_data["pix_key"] = normalized_pix_key
-    form_data["tipo"] = "apoiador"
 
     if not EMAIL_PATTERN.match(normalized_email):
         return render_register(request, "Informe um email válido.", form_data)
-    if not is_valid_cpf_cnpj(normalized_doc):
-        return render_register(request, "CPF/CNPJ inválido.", form_data)
-    if len(normalized_phone) not in {10, 11}:
-        return render_register(request, "Telefone inválido. Informe DDD + número.", form_data)
     if not normalized_pix_key:
         return render_register(request, "A Chave Pix é obrigatória para cadastro.", form_data)
     if not is_strong_password(senha):
@@ -398,20 +376,10 @@ async def register(
     if senha != confirmar_senha:
         return render_register(request, "A confirmação da senha não confere.", form_data)
 
-    exists_stmt = select(User).where(or_(User.email == normalized_email, User.cpf_cnpj == normalized_doc))
+    exists_stmt = select(User).where(User.email == normalized_email)
     existing_user = db.execute(exists_stmt).scalars().first()
     if existing_user:
-        if existing_user.email == normalized_email:
-            error = "Este email já está cadastrado."
-        else:
-            error = "Este CPF/CNPJ já está cadastrado."
-        return render_register(request, error, form_data)
-
-    try:
-        doc_temp_url = await save_upload_to_temp(official_document, kind="document")
-        selfie_temp_url = await save_upload_to_temp(official_selfie, kind="selfie")
-    except ValueError as exc:
-        return render_register(request, str(exc), form_data)
+        return render_register(request, "Este email já está cadastrado.", form_data)
 
     if not REGISTER_REQUIRE_EMAIL_VERIFICATION:
         new_user = User(
@@ -419,8 +387,6 @@ async def register(
             email=normalized_email,
             password_hash=get_password_hash(senha),
             tipo="apoiador",
-            cpf_cnpj=normalized_doc,
-            telefone=normalized_phone,
             pix_key=normalized_pix_key,
             sharkscope_link=None,
             endereco_completo=None,
@@ -430,14 +396,6 @@ async def register(
         )
         db.add(new_user)
         db.flush()
-        db.add(
-            UserDocument(
-                user_id=new_user.id,
-                document_file_url=move_temp_file_to_kyc(doc_temp_url, user_id=new_user.id, kind="document"),
-                selfie_file_url=move_temp_file_to_kyc(selfie_temp_url, user_id=new_user.id, kind="selfie"),
-                status="PENDING",
-            )
-        )
         db.add(
             Wallet(
                 user_id=new_user.id,
@@ -458,15 +416,11 @@ async def register(
             "email": normalized_email,
             "password_hash": get_password_hash(senha),
             "tipo": "apoiador",
-            "cpf_cnpj": normalized_doc,
-            "telefone": normalized_phone,
             "pix_key": normalized_pix_key,
             "sharkscope_link": None,
             "endereco_completo": None,
             "data_nascimento": None,
             "bio": None,
-            "doc_temp_url": doc_temp_url,
-            "selfie_temp_url": selfie_temp_url,
         },
         ensure_ascii=True,
     )
@@ -573,22 +527,19 @@ def register_verify_submit(
         return render_register(request, "Cadastro pendente inválido. Refaça seu cadastro.")
 
     email = str(payload.get("email", "")).strip().lower()
-    cpf_cnpj = str(payload.get("cpf_cnpj", "")).strip()
-    exists_stmt = select(User).where(or_(User.email == email, User.cpf_cnpj == cpf_cnpj))
+    exists_stmt = select(User).where(User.email == email)
     existing_user = db.execute(exists_stmt).scalars().first()
     if existing_user:
         verification.consumed_at = now
         db.commit()
         request.session.pop("pending_verification_id", None)
-        return render_register(request, "Email ou CPF/CNPJ já foi cadastrado.")
+        return render_register(request, "Email já foi cadastrado.")
 
     new_user = User(
         nome=str(payload.get("nome", "")).strip(),
         email=email,
         password_hash=str(payload.get("password_hash", "")),
         tipo="apoiador",
-        cpf_cnpj=cpf_cnpj,
-        telefone=str(payload.get("telefone", "")).strip(),
         pix_key=str(payload.get("pix_key", "")).strip() or None,
         sharkscope_link=None,
         endereco_completo=payload.get("endereco_completo"),
@@ -598,29 +549,6 @@ def register_verify_submit(
     )
     db.add(new_user)
     db.flush()
-    doc_temp_url = str(payload.get("doc_temp_url", "")).strip()
-    selfie_temp_url = str(payload.get("selfie_temp_url", "")).strip()
-    if not doc_temp_url or not selfie_temp_url:
-        verification.consumed_at = now
-        db.commit()
-        request.session.pop("pending_verification_id", None)
-        return render_register(request, "Documentação pendente ausente. Refaça seu cadastro.")
-    try:
-        document_file_url = move_temp_file_to_kyc(doc_temp_url, user_id=new_user.id, kind="document")
-        selfie_file_url = move_temp_file_to_kyc(selfie_temp_url, user_id=new_user.id, kind="selfie")
-    except ValueError:
-        verification.consumed_at = now
-        db.commit()
-        request.session.pop("pending_verification_id", None)
-        return render_register(request, "Não foi possível processar seus arquivos. Refaça seu cadastro.")
-    db.add(
-        UserDocument(
-            user_id=new_user.id,
-            document_file_url=document_file_url,
-            selfie_file_url=selfie_file_url,
-            status="PENDING",
-        )
-    )
     db.add(
         Wallet(
             user_id=new_user.id,

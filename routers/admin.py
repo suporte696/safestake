@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, Tournament, UserDocument, Wallet
+from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, Tournament, TournamentEscrow, UserDocument, Wallet
 from routers.auth import ensure_admin_user, fetch_current_user, get_wallet_summary
 
 templates = Jinja2Templates(directory="templates")
@@ -102,6 +102,80 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "requires_auth": True,
         },
     )
+
+
+@router.post("/admin/tournaments/create")
+def create_admin_tournament_offer(
+    request: Request,
+    tournament_name: str = Form(...),
+    buyin: float = Form(...),
+    markup: float = Form(...),
+    total_pct: float = Form(...),
+    start_time: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+
+    try:
+        buyin_value = q_money(Decimal(str(buyin)))
+        markup_value = Decimal(str(markup))
+        total_pct_value = Decimal(str(total_pct))
+    except InvalidOperation:
+        raise HTTPException(status_code=400, detail="Dados inválidos para criar torneio.")
+
+    if buyin_value <= 0:
+        raise HTTPException(status_code=400, detail="Buy-in deve ser maior que zero.")
+    if markup_value <= 0:
+        raise HTTPException(status_code=400, detail="Markup deve ser maior que zero.")
+    if total_pct_value <= 0 or total_pct_value > 100:
+        raise HTTPException(status_code=400, detail="Porcentagem à venda deve ser entre 0 e 100.")
+
+    data_hora = None
+    if start_time:
+        try:
+            data_hora = datetime.fromisoformat(start_time)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Data/hora inválida.")
+
+    with db.begin():
+        tournament = Tournament(
+            nome=tournament_name.strip(),
+            sharkscope_id="GGPoker",
+            plataforma="GGPoker",
+            buyin=buyin_value,
+            data_hora=data_hora,
+            status="Aberto",
+        )
+        db.add(tournament)
+        db.flush()
+
+        offer = StakeOffer(
+            tournament_id=tournament.id,
+            player_id=user.id,
+            markup=markup_value,
+            total_disponivel_pct=total_pct_value,
+            vendido_pct=Decimal("0"),
+            escrow_status="COLLECTING",
+        )
+        db.add(offer)
+        db.flush()
+
+        total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
+        db.add(
+            TournamentEscrow(
+                tournament_id=tournament.id,
+                offer_id=offer.id,
+                total_required=q_money(total_required),
+                total_collected=Decimal("0"),
+                status="COLLECTING",
+                deadline_at=data_hora,
+            )
+        )
+
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @router.post("/api/tournaments/{tournament_id}/close")

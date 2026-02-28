@@ -23,6 +23,78 @@
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Criar Novo Torneio/Oferta</h2>
+      <span class="text-xs text-gray-400">Publica na Home para apoiadores</span>
+    </div>
+    <form method="post" action="/admin/tournaments/create" class="grid gap-4 md:grid-cols-2">
+      <div class="md:col-span-2 space-y-2">
+        <label class="text-xs text-gray-400">Nome do Torneio</label>
+        <input
+          type="text"
+          name="tournament_name"
+          placeholder="Sunday Million Special"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Buy-in (R$)</label>
+        <input
+          type="number"
+          name="buyin"
+          min="0.01"
+          step="0.01"
+          placeholder="109.00"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Markup</label>
+        <input
+          type="number"
+          name="markup"
+          min="0.01"
+          step="0.01"
+          placeholder="1.10"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Porcentagem à venda (%)</label>
+        <input
+          type="number"
+          name="total_pct"
+          min="1"
+          max="100"
+          step="0.01"
+          placeholder="50"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Data/Hora</label>
+        <input
+          type="datetime-local"
+          name="start_time"
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="md:col-span-2">
+        <button
+          type="submit"
+          class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+        >
+          Publicar Torneio
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Torneios ativos</h2>
       <span class="text-xs text-gray-400">{{ active_tournaments|length }} em andamento</span>
     </div>
