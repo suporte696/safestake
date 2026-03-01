@@ -1,6 +1,7 @@
 import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -125,6 +126,13 @@ def _create_pending_tx(db: Session, user_id: int, amount: Decimal) -> str:
     return txid
 
 
+def _resolve_base_url(request: Request) -> str:
+    public_base_url = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+    if public_base_url:
+        return public_base_url
+    return str(request.base_url).rstrip("/")
+
+
 @router.post("/api/deposit/infinitepay")
 async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
@@ -135,7 +143,7 @@ async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
     payload = await request.json()
     amount = _extract_and_validate_amount(payload)
     txid = _create_pending_tx(db, user.id, amount)
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _resolve_base_url(request)
 
     try:
         redirect_url = f"{base_url}/dashboard?payment=success"
@@ -161,7 +169,7 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
     payload = await request.json()
     amount = _extract_and_validate_amount(payload)
     txid = _create_pending_tx(db, user.id, amount)
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _resolve_base_url(request)
     try:
         checkout_url = await create_mp_preference(
             amount_brl=float(amount),

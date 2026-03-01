@@ -1,6 +1,7 @@
 import os
 from typing import Any
 from urllib.parse import quote_plus
+from urllib.parse import urlparse
 
 import mercadopago
 from fastapi.concurrency import run_in_threadpool
@@ -11,6 +12,18 @@ def _get_sdk() -> mercadopago.SDK:
     if not token:
         raise RuntimeError("Variável de ambiente MERCADOPAGO_ACCESS_TOKEN não configurada.")
     return mercadopago.SDK(token)
+
+
+def _normalize_response(raw_response: Any) -> dict[str, Any]:
+    if isinstance(raw_response, dict):
+        return raw_response
+    if hasattr(raw_response, "__dict__"):
+        data = dict(vars(raw_response))
+        for attr in ("status", "response", "message", "error", "cause"):
+            if attr not in data and hasattr(raw_response, attr):
+                data[attr] = getattr(raw_response, attr)
+        return data
+    return {}
 
 
 def _pick_checkout_url(response: dict[str, Any]) -> str | None:
@@ -50,9 +63,22 @@ def _build_checkout_url_from_preference_id(preference_id: str) -> str:
     return f"{base}?pref_id={quote_plus(preference_id)}"
 
 
+def _is_public_https_url(value: str) -> bool:
+    try:
+        parsed = urlparse(value)
+    except Exception:
+        return False
+    if parsed.scheme.lower() != "https":
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host or host in {"localhost", "127.0.0.1", "::1"}:
+        return False
+    return True
+
+
 async def create_mp_preference(amount_brl: float, txid: str, base_url: str) -> str:
     sdk = _get_sdk()
-    preference_data = {
+    preference_data: dict[str, Any] = {
         "items": [
             {
                 "title": "Depósito Safe Stake",
@@ -62,16 +88,18 @@ async def create_mp_preference(amount_brl: float, txid: str, base_url: str) -> s
             }
         ],
         "external_reference": str(txid),
-        "back_urls": {
+    }
+    if _is_public_https_url(base_url):
+        preference_data["back_urls"] = {
             "success": f"{base_url}/dashboard?payment=success",
             "failure": f"{base_url}/dashboard?payment=failure",
             "pending": f"{base_url}/dashboard?payment=pending",
-        },
-        "auto_return": "approved",
-        "notification_url": f"{base_url}/webhooks/mercadopago",
-    }
+        }
+        preference_data["auto_return"] = "approved"
+        preference_data["notification_url"] = f"{base_url}/webhooks/mercadopago"
 
-    response = await run_in_threadpool(sdk.preference().create, preference_data)
+    raw_response = await run_in_threadpool(sdk.preference().create, preference_data)
+    response = _normalize_response(raw_response)
     checkout_url = _pick_checkout_url(response)
     if checkout_url:
         return checkout_url
@@ -82,13 +110,17 @@ async def create_mp_preference(amount_brl: float, txid: str, base_url: str) -> s
 
     status = (response or {}).get("status")
     cause = (response or {}).get("cause")
+    error = (response or {}).get("error")
+    message = (response or {}).get("message")
+    response_payload = (response or {}).get("response")
+    response_keys = list(response_payload.keys()) if isinstance(response_payload, dict) else []
     raise RuntimeError(
         "Mercado Pago não retornou URL nem ID da preferência "
-        f"(status={status}, cause={cause})."
+        f"(status={status}, error={error}, message={message}, cause={cause}, response_keys={response_keys})."
     )
 
 
 async def get_mp_payment(payment_id: str) -> dict[str, Any]:
     sdk = _get_sdk()
-    response = await run_in_threadpool(sdk.payment().get, payment_id)
-    return response or {}
+    raw_response = await run_in_threadpool(sdk.payment().get, payment_id)
+    return _normalize_response(raw_response)
