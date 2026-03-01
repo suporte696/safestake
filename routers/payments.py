@@ -10,21 +10,12 @@ from db import get_db
 from models import PixTransaction, Wallet
 from routers.auth import ensure_user_not_blocked, fetch_current_user
 from services.infinitepay import generate_checkout_link
+from services.mercadopago_service import create_mp_preference, get_mp_payment
 
 router = APIRouter()
 
 MIN_DEPOSIT_AMOUNT = Decimal("5.00")
 MAX_DEPOSIT_AMOUNT = Decimal("50000.00")
-
-
-def serialize_pix_tx(tx: PixTransaction) -> dict[str, Any]:
-    return {
-        "id": tx.id,
-        "order_nsu": tx.order_nsu,
-        "amount": float(tx.amount),
-        "status": tx.status,
-        "created_at": tx.created_at.isoformat() if tx.created_at else None,
-    }
 
 
 def ensure_wallet_for_user(db: Session, user_id: int, with_lock: bool = False) -> Wallet:
@@ -43,6 +34,38 @@ def ensure_wallet_for_user(db: Session, user_id: int, with_lock: bool = False) -
     db.add(wallet)
     db.flush()
     return wallet
+
+
+def _extract_payment_id(payload: dict[str, Any], request: Request) -> str | None:
+    query_candidates = (
+        request.query_params.get("data.id"),
+        request.query_params.get("id"),
+        request.query_params.get("payment_id"),
+    )
+    for candidate in query_candidates:
+        if candidate:
+            return str(candidate)
+
+    direct_candidates = (
+        payload.get("data.id"),
+        payload.get("id"),
+        payload.get("payment_id"),
+    )
+    for candidate in direct_candidates:
+        if candidate:
+            return str(candidate)
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        nested_id = data.get("id")
+        if nested_id:
+            return str(nested_id)
+
+    resource = payload.get("resource")
+    if isinstance(resource, str) and "/" in resource:
+        return resource.rsplit("/", 1)[-1].strip() or None
+
+    return None
 
 
 def _map_webhook_status(payload: dict[str, Any]) -> str:
@@ -70,14 +93,7 @@ def _extract_webhook_order_nsu(payload: dict[str, Any]) -> str | None:
     return None
 
 
-@router.post("/api/deposit/infinitepay")
-async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
-    user = fetch_current_user(request, db)
-    if not user:
-        raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
-    ensure_user_not_blocked(user)
-
-    payload = await request.json()
+def _extract_and_validate_amount(payload: dict[str, Any]) -> Decimal:
     amount_raw = payload.get("amount")
     if amount_raw is None:
         raise HTTPException(status_code=400, detail="Campo amount é obrigatório.")
@@ -92,35 +108,69 @@ async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=f"Depósito mínimo é R$ {MIN_DEPOSIT_AMOUNT}.")
     if amount > MAX_DEPOSIT_AMOUNT:
         raise HTTPException(status_code=400, detail=f"Depósito máximo é R$ {MAX_DEPOSIT_AMOUNT}.")
+    return amount
 
-    order_nsu = str(uuid.uuid4())
+
+def _create_pending_tx(db: Session, user_id: int, amount: Decimal) -> str:
+    txid = str(uuid.uuid4())
     tx = PixTransaction(
-        user_id=user.id,
-        order_nsu=order_nsu,
+        user_id=user_id,
+        order_nsu=txid,
         amount=amount,
         status="PENDING",
     )
     db.add(tx)
-    ensure_wallet_for_user(db, user.id, with_lock=False)
+    ensure_wallet_for_user(db, user_id, with_lock=False)
     db.commit()
+    return txid
+
+
+@router.post("/api/deposit/infinitepay")
+async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
+    ensure_user_not_blocked(user)
+
+    payload = await request.json()
+    amount = _extract_and_validate_amount(payload)
+    txid = _create_pending_tx(db, user.id, amount)
+    base_url = str(request.base_url).rstrip("/")
 
     try:
-        base_url = str(request.base_url).rstrip("/")
         redirect_url = f"{base_url}/dashboard?payment=success"
         webhook_url = f"{base_url}/webhooks/infinitepay"
         checkout_url = await generate_checkout_link(
             amount_brl=float(amount),
-            order_nsu=order_nsu,
+            order_nsu=txid,
             redirect_url=redirect_url,
             webhook_url=webhook_url,
         )
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Erro ao gerar link de pagamento na InfinitePay: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout na InfinitePay: {exc}") from exc
+    return {"checkout_url": checkout_url, "gateway": "infinitepay"}
 
-    return {
-        "transaction": serialize_pix_tx(tx),
-        "checkout_url": checkout_url,
-    }
+
+@router.post("/api/deposit/mercadopago")
+async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
+    ensure_user_not_blocked(user)
+
+    payload = await request.json()
+    amount = _extract_and_validate_amount(payload)
+    txid = _create_pending_tx(db, user.id, amount)
+    base_url = str(request.base_url).rstrip("/")
+    try:
+        checkout_url = await create_mp_preference(
+            amount_brl=float(amount),
+            txid=txid,
+            base_url=base_url,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout no Mercado Pago: {exc}") from exc
+    return {"checkout_url": checkout_url, "gateway": "mercadopago"}
 
 
 @router.post("/webhooks/infinitepay")
@@ -128,24 +178,63 @@ async def infinitepay_webhook(request: Request, db: Session = Depends(get_db)):
     try:
         payload = await request.json()
     except Exception:
-        return {"received": True, "ignored": True}
+        return {"status": "ok"}
 
     order_nsu = _extract_webhook_order_nsu(payload)
     if not order_nsu:
-        return {"received": True, "ignored": True}
+        return {"status": "ok"}
     mapped_status = _map_webhook_status(payload)
 
-    with db.begin():
-        tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == order_nsu).with_for_update()
-        tx = db.execute(tx_stmt).scalars().first()
-        if not tx:
-            return {"received": True, "ignored": True}
+    try:
+        with db.begin():
+            tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == order_nsu).with_for_update()
+            tx = db.execute(tx_stmt).scalars().first()
+            if not tx:
+                return {"status": "ok"}
 
-        old_status = tx.status
-        tx.status = mapped_status
+            if mapped_status == "PAID" and tx.status != "PAID":
+                tx.status = "PAID"
+                wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
+                wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+    except Exception:
+        return {"status": "ok"}
 
-        if mapped_status == "PAID" and old_status != "PAID":
-            wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
-            wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+    return {"status": "ok"}
 
-    return {"received": True, "status": mapped_status}
+
+@router.post("/webhooks/mercadopago")
+async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
+    try:
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        payment_id = _extract_payment_id(payload, request)
+        if not payment_id:
+            return {"status": "ok"}
+
+        payment_response = await get_mp_payment(payment_id)
+        payment_data = (payment_response or {}).get("response") or {}
+        payment_status = str(payment_data.get("status") or "").strip().lower()
+        if payment_status != "approved":
+            return {"status": "ok"}
+
+        txid = str(payment_data.get("external_reference") or "").strip()
+        if not txid:
+            return {"status": "ok"}
+
+        with db.begin():
+            tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
+            tx = db.execute(tx_stmt).scalars().first()
+            if not tx:
+                return {"status": "ok"}
+
+            if tx.status != "PAID":
+                tx.status = "PAID"
+                wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
+                wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+    except Exception:
+        return {"status": "ok"}
+
+    return {"status": "ok"}
