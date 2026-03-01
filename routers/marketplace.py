@@ -54,6 +54,9 @@ def marketplace(request: Request, db: Session = Depends(get_db)):
         }
     stmt = (
         select(StakeOffer)
+        .join(Tournament, StakeOffer.tournament_id == Tournament.id)
+        .where(Tournament.status.in_(("Aberto", "Jogando")))
+        .where(StakeOffer.escrow_status == "COLLECTING")
         .options(joinedload(StakeOffer.player), joinedload(StakeOffer.tournament))
         .order_by(StakeOffer.id.desc())
     )
