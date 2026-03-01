@@ -79,9 +79,13 @@
       <input
         id="investmentAmount"
         type="number"
+        min="0.01"
+        step="0.01"
         placeholder="R$ 0,00"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
       />
+      <p id="investmentMaxHint" class="text-xs text-gray-500"></p>
+      <p id="investmentWarning" class="text-xs text-amber-400 hidden"></p>
     </div>
 
     <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2">
@@ -167,23 +171,95 @@
   const offerId = {{ offer.id if offer else "null" }};
   const buyin = Number("{{ offer.buyin if offer else 0 }}");
   const markup = Number("{{ offer.markup if offer else 1 }}");
+  const totalPct = Number("{{ offer.total_pct if offer else 0 }}");
+  const soldPct = Number("{{ offer.sold_pct if offer else 0 }}");
+  const hasWallet = {{ "true" if wallet else "false" }};
+  const walletAvailable = Number("{{ wallet.saldo_disponivel if wallet else 0 }}");
+  const availablePct = Math.max(0, totalPct - soldPct);
+  const maxOfferAmount = (buyin > 0 && markup > 0) ? ((buyin * markup * availablePct) / 100) : 0;
+  const maxInvestAmount = hasWallet ? Math.min(maxOfferAmount, Math.max(0, walletAvailable)) : maxOfferAmount;
   const input = document.getElementById("investmentAmount");
   const estimatedPct = document.getElementById("estimatedPct");
   const confirmButton = document.getElementById("confirmInvest");
+  const investmentMaxHint = document.getElementById("investmentMaxHint");
+  const investmentWarning = document.getElementById("investmentWarning");
 
   const formatPct = (value) => `${value.toFixed(2)}%`;
+  const formatBRL = (value) =>
+    `R$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
+
+  const clampToMax = (value) => {
+    if (!Number.isFinite(value)) return 0;
+    if (value <= 0) return 0;
+    return Math.min(value, maxInvestAmount);
+  };
+
+  const validateAmount = (amount) => {
+    if (!amount || amount <= 0) {
+      return { valid: false, reason: "Informe um valor maior que zero." };
+    }
+    if (!maxInvestAmount || maxInvestAmount <= 0 || availablePct <= 0) {
+      return { valid: false, reason: "Esta oferta não possui cota disponível no momento." };
+    }
+    if (amount > maxInvestAmount) {
+      return {
+        valid: false,
+        reason: `Valor acima do máximo disponível para esta oferta (${formatBRL(maxInvestAmount)}).`,
+      };
+    }
+    return { valid: true, reason: "" };
+  };
 
   const updateEstimate = () => {
     const amount = Number(input.value || 0);
-    if (!amount || amount <= 0 || !buyin || !markup) {
+    const validation = validateAmount(amount);
+    if (!validation.valid || !buyin || !markup) {
       estimatedPct.textContent = "0.00%";
+      confirmButton.disabled = true;
+      confirmButton.classList.add("opacity-60", "cursor-not-allowed");
+      if (validation.reason) {
+        investmentWarning.textContent = validation.reason;
+        investmentWarning.classList.remove("hidden");
+      } else {
+        investmentWarning.classList.add("hidden");
+      }
       return;
     }
+
+    confirmButton.disabled = false;
+    confirmButton.classList.remove("opacity-60", "cursor-not-allowed");
+    investmentWarning.classList.add("hidden");
     const pct = (amount / (buyin * markup)) * 100;
     estimatedPct.textContent = formatPct(pct);
   };
 
+  if (input) {
+    input.max = maxInvestAmount > 0 ? String(maxInvestAmount.toFixed(2)) : "0";
+  }
+  if (investmentMaxHint) {
+    if (hasWallet) {
+      investmentMaxHint.textContent = `Máximo permitido agora: ${formatBRL(maxInvestAmount)} (cota: ${formatBRL(maxOfferAmount)} | saldo: ${formatBRL(walletAvailable)}).`;
+    } else {
+      investmentMaxHint.textContent = `Máximo para esta oferta: ${formatBRL(maxInvestAmount)} (${formatPct(availablePct)} disponível).`;
+    }
+  }
+
+  const normalizeInputToOfferLimit = () => {
+    const amount = Number(input?.value || 0);
+    if (!amount || amount <= 0) return;
+    const normalized = clampToMax(amount);
+    if (normalized !== amount && input) {
+      input.value = normalized.toFixed(2);
+      window.showToast(`Valor ajustado para o máximo permitido (${formatBRL(normalized)}).`, "error");
+    }
+  };
+
   input?.addEventListener("input", updateEstimate);
+  input?.addEventListener("blur", () => {
+    normalizeInputToOfferLimit();
+    updateEstimate();
+  });
+  updateEstimate();
 
   confirmButton?.addEventListener("click", async () => {
     const amount = Number(input.value || 0);
@@ -193,6 +269,12 @@
     }
     if (!amount || amount <= 0) {
       window.showToast("Informe um valor válido.", "error");
+      return;
+    }
+    if (amount > maxInvestAmount) {
+      window.showToast(`Máximo permitido para esta oferta: ${formatBRL(maxInvestAmount)}.`, "error");
+      confirmButton.disabled = true;
+      confirmButton.classList.add("opacity-60", "cursor-not-allowed");
       return;
     }
     try {

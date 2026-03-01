@@ -2,6 +2,7 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from typing import Any
 import os
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -14,6 +15,7 @@ from services.infinitepay import generate_checkout_link
 from services.mercadopago_service import create_mp_preference, get_mp_merchant_order, get_mp_payment
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 MIN_DEPOSIT_AMOUNT = Decimal("5.00")
 MAX_DEPOSIT_AMOUNT = Decimal("50000.00")
@@ -225,13 +227,22 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
     amount = _extract_and_validate_amount(payload)
     txid = _create_pending_tx(db, user.id, amount)
     base_url = _resolve_base_url(request)
+    logger.info(
+        "MP deposit started: user_id=%s txid=%s amount=%s base_url=%s",
+        user.id,
+        txid,
+        amount,
+        base_url,
+    )
     try:
         checkout_url = await create_mp_preference(
             amount_brl=float(amount),
             txid=txid,
             base_url=base_url,
         )
+        logger.info("MP preference created: txid=%s", txid)
     except Exception as exc:
+        logger.exception("MP preference create failed: user_id=%s txid=%s", user.id, txid)
         raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout no Mercado Pago: {exc}") from exc
     return {"checkout_url": checkout_url, "gateway": "mercadopago"}
 
@@ -275,36 +286,56 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
 
         payment_id = _extract_payment_id(payload, request)
         topic = _extract_notification_topic(payload, request)
+        logger.info("MP webhook received: topic=%s payment_id=%s", topic, payment_id)
         if not payment_id and ("merchant_order" in topic or topic.startswith("order")):
             merchant_order_id = _extract_merchant_order_id(payload, request)
             if merchant_order_id:
                 merchant_order = await get_mp_merchant_order(merchant_order_id)
                 payment_id = _extract_payment_id_from_merchant_order(merchant_order)
+                logger.info(
+                    "MP webhook merchant_order resolved: merchant_order_id=%s payment_id=%s",
+                    merchant_order_id,
+                    payment_id,
+                )
 
         if not payment_id:
+            logger.warning("MP webhook ignored: payment_id not found")
             return {"status": "ok"}
 
         payment_response = await get_mp_payment(payment_id)
         payment_data = (payment_response or {}).get("response") or {}
         payment_status = str(payment_data.get("status") or "").strip().lower()
+        logger.info("MP payment fetched: payment_id=%s status=%s", payment_id, payment_status)
         if payment_status != "approved":
             return {"status": "ok"}
 
         txid = str(payment_data.get("external_reference") or "").strip()
         if not txid:
+            logger.warning("MP webhook ignored: payment_id=%s external_reference missing", payment_id)
             return {"status": "ok"}
 
         with db.begin():
             tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
             tx = db.execute(tx_stmt).scalars().first()
             if not tx:
+                logger.warning("MP webhook tx not found: txid=%s payment_id=%s", txid, payment_id)
                 return {"status": "ok"}
 
             if tx.status != "PAID":
                 tx.status = "PAID"
                 wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
                 wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+                logger.info(
+                    "MP payment credited: txid=%s payment_id=%s user_id=%s amount=%s",
+                    txid,
+                    payment_id,
+                    tx.user_id,
+                    tx.amount,
+                )
+            else:
+                logger.info("MP webhook duplicate ignored: txid=%s payment_id=%s", txid, payment_id)
     except Exception:
+        logger.exception("MP webhook processing error")
         return {"status": "ok"}
 
     return {"status": "ok"}
