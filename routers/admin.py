@@ -6,10 +6,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
+from urllib.parse import quote_plus
 
 from db import get_db
 from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, Tournament, TournamentEscrow, UserDocument, Wallet
-from routers.auth import ensure_admin_user, fetch_current_user, get_wallet_summary
+from routers.auth import ensure_admin_user, fetch_current_user, get_password_hash, get_wallet_summary, is_strong_password, verify_password
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -88,6 +89,9 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             )
         settlement_rows_by_tournament[tournament.id] = rows
 
+    password_error = request.query_params.get("pwd_error")
+    password_success = request.query_params.get("pwd_success")
+
     return templates.TemplateResponse(
         "admin_dashboard.html",
         {
@@ -99,9 +103,42 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "active_tournaments": active_tournaments,
             "finalized_tournaments": finalized_tournaments,
             "settlement_rows_by_tournament": settlement_rows_by_tournament,
+            "password_error": password_error,
+            "password_success": password_success,
             "requires_auth": True,
         },
     )
+
+
+@router.post("/admin/password/update")
+def update_admin_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+
+    if not verify_password(current_password, user.password_hash):
+        msg = quote_plus("Senha atual inválida.")
+        return RedirectResponse(url=f"/admin/dashboard?pwd_error={msg}", status_code=303)
+    if new_password != confirm_password:
+        msg = quote_plus("A confirmação da nova senha não confere.")
+        return RedirectResponse(url=f"/admin/dashboard?pwd_error={msg}", status_code=303)
+    if not is_strong_password(new_password):
+        msg = quote_plus("A nova senha deve ter 8+ caracteres, letras e números.")
+        return RedirectResponse(url=f"/admin/dashboard?pwd_error={msg}", status_code=303)
+    if verify_password(new_password, user.password_hash):
+        msg = quote_plus("A nova senha não pode ser igual à atual.")
+        return RedirectResponse(url=f"/admin/dashboard?pwd_error={msg}", status_code=303)
+
+    user.password_hash = get_password_hash(new_password)
+    db.commit()
+    return RedirectResponse(url="/admin/dashboard?pwd_success=1", status_code=303)
 
 
 @router.post("/admin/tournaments/create")

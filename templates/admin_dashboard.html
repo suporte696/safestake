@@ -23,6 +23,61 @@
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Alterar Senha do Admin</h2>
+      <span class="text-xs text-gray-400">Segurança da conta</span>
+    </div>
+    {% if password_error %}
+    <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+      {{ password_error }}
+    </div>
+    {% endif %}
+    {% if password_success %}
+    <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+      Senha atualizada com sucesso.
+    </div>
+    {% endif %}
+    <form method="post" action="/admin/password/update" class="grid gap-4 md:grid-cols-3">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Senha atual</label>
+        <input
+          type="password"
+          name="current_password"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Nova senha</label>
+        <input
+          type="password"
+          name="new_password"
+          required
+          placeholder="8+ caracteres, letras e números"
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Confirmar nova senha</label>
+        <input
+          type="password"
+          name="confirm_password"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="md:col-span-3">
+        <button
+          type="submit"
+          class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+        >
+          Atualizar Senha
+        </button>
+      </div>
+    </form>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Criar Novo Torneio/Oferta</h2>
       <span class="text-xs text-gray-400">Publica na Home para apoiadores</span>
     </div>
