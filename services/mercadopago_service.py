@@ -15,14 +15,22 @@ def _get_sdk() -> mercadopago.SDK:
 
 
 def _normalize_response(raw_response: Any) -> dict[str, Any]:
-    if isinstance(raw_response, dict):
-        return raw_response
-    if hasattr(raw_response, "__dict__"):
-        data = dict(vars(raw_response))
-        for attr in ("status", "response", "message", "error", "cause"):
-            if attr not in data and hasattr(raw_response, attr):
-                data[attr] = getattr(raw_response, attr)
-        return data
+    def _to_plain(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(k): _to_plain(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_to_plain(item) for item in value]
+        if hasattr(value, "__dict__"):
+            data = dict(vars(value))
+            for attr in ("status", "response", "message", "error", "cause", "id"):
+                if attr not in data and hasattr(value, attr):
+                    data[attr] = getattr(value, attr)
+            return {str(k): _to_plain(v) for k, v in data.items()}
+        return value
+
+    normalized = _to_plain(raw_response)
+    if isinstance(normalized, dict):
+        return normalized
     return {}
 
 
@@ -123,4 +131,10 @@ async def create_mp_preference(amount_brl: float, txid: str, base_url: str) -> s
 async def get_mp_payment(payment_id: str) -> dict[str, Any]:
     sdk = _get_sdk()
     raw_response = await run_in_threadpool(sdk.payment().get, payment_id)
+    return _normalize_response(raw_response)
+
+
+async def get_mp_merchant_order(merchant_order_id: str) -> dict[str, Any]:
+    sdk = _get_sdk()
+    raw_response = await run_in_threadpool(sdk.merchant_order().get, merchant_order_id)
     return _normalize_response(raw_response)

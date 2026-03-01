@@ -11,7 +11,7 @@ from db import get_db
 from models import PixTransaction, Wallet
 from routers.auth import ensure_user_not_blocked, fetch_current_user
 from services.infinitepay import generate_checkout_link
-from services.mercadopago_service import create_mp_preference, get_mp_payment
+from services.mercadopago_service import create_mp_preference, get_mp_merchant_order, get_mp_payment
 
 router = APIRouter()
 
@@ -66,6 +66,61 @@ def _extract_payment_id(payload: dict[str, Any], request: Request) -> str | None
     if isinstance(resource, str) and "/" in resource:
         return resource.rsplit("/", 1)[-1].strip() or None
 
+    return None
+
+
+def _extract_notification_topic(payload: dict[str, Any], request: Request) -> str:
+    raw_topic = (
+        request.query_params.get("topic")
+        or request.query_params.get("type")
+        or payload.get("topic")
+        or payload.get("type")
+        or payload.get("action")
+        or ""
+    )
+    return str(raw_topic).strip().lower()
+
+
+def _extract_merchant_order_id(payload: dict[str, Any], request: Request) -> str | None:
+    query_candidates = (
+        request.query_params.get("data.id"),
+        request.query_params.get("id"),
+        request.query_params.get("merchant_order_id"),
+    )
+    for candidate in query_candidates:
+        if candidate:
+            return str(candidate)
+
+    direct_candidates = (
+        payload.get("data.id"),
+        payload.get("id"),
+        payload.get("merchant_order_id"),
+    )
+    for candidate in direct_candidates:
+        if candidate:
+            return str(candidate)
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        nested_id = data.get("id")
+        if nested_id:
+            return str(nested_id)
+    return None
+
+
+def _extract_payment_id_from_merchant_order(response: dict[str, Any]) -> str | None:
+    order_data = (response or {}).get("response") or {}
+    if not isinstance(order_data, dict):
+        return None
+    payments = order_data.get("payments")
+    if not isinstance(payments, list):
+        return None
+    for payment in payments:
+        if not isinstance(payment, dict):
+            continue
+        pid = payment.get("id")
+        if pid:
+            return str(pid)
     return None
 
 
@@ -219,6 +274,13 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
             payload = {}
 
         payment_id = _extract_payment_id(payload, request)
+        topic = _extract_notification_topic(payload, request)
+        if not payment_id and ("merchant_order" in topic or topic.startswith("order")):
+            merchant_order_id = _extract_merchant_order_id(payload, request)
+            if merchant_order_id:
+                merchant_order = await get_mp_merchant_order(merchant_order_id)
+                payment_id = _extract_payment_id_from_merchant_order(merchant_order)
+
         if not payment_id:
             return {"status": "ok"}
 
