@@ -140,40 +140,40 @@ def create_admin_tournament_offer(
         except ValueError:
             raise HTTPException(status_code=400, detail="Data/hora inválida.")
 
-    with db.begin():
-        tournament = Tournament(
-            nome=tournament_name.strip(),
-            sharkscope_id="GGPoker",
-            plataforma="GGPoker",
-            buyin=buyin_value,
-            data_hora=data_hora,
-            status="Aberto",
-        )
-        db.add(tournament)
-        db.flush()
+    tournament = Tournament(
+        nome=tournament_name.strip(),
+        sharkscope_id="GGPoker",
+        plataforma="GGPoker",
+        buyin=buyin_value,
+        data_hora=data_hora,
+        status="Aberto",
+    )
+    db.add(tournament)
+    db.flush()
 
-        offer = StakeOffer(
+    offer = StakeOffer(
+        tournament_id=tournament.id,
+        player_id=user.id,
+        markup=markup_value,
+        total_disponivel_pct=total_pct_value,
+        vendido_pct=Decimal("0"),
+        escrow_status="COLLECTING",
+    )
+    db.add(offer)
+    db.flush()
+
+    total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
+    db.add(
+        TournamentEscrow(
             tournament_id=tournament.id,
-            player_id=user.id,
-            markup=markup_value,
-            total_disponivel_pct=total_pct_value,
-            vendido_pct=Decimal("0"),
-            escrow_status="COLLECTING",
+            offer_id=offer.id,
+            total_required=q_money(total_required),
+            total_collected=Decimal("0"),
+            status="COLLECTING",
+            deadline_at=data_hora,
         )
-        db.add(offer)
-        db.flush()
-
-        total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
-        db.add(
-            TournamentEscrow(
-                tournament_id=tournament.id,
-                offer_id=offer.id,
-                total_required=q_money(total_required),
-                total_collected=Decimal("0"),
-                status="COLLECTING",
-                deadline_at=data_hora,
-            )
-        )
+    )
+    db.commit()
 
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
@@ -199,28 +199,28 @@ async def close_tournament(tournament_id: int, request: Request, db: Session = D
 
     total_allocated = Decimal("0")
     updated_count = 0
-    with db.begin():
-        tournament_stmt = select(Tournament).where(Tournament.id == tournament_id).with_for_update()
-        tournament = db.execute(tournament_stmt).scalars().first()
-        if not tournament:
-            raise HTTPException(status_code=404, detail="Torneio não encontrado.")
+    tournament_stmt = select(Tournament).where(Tournament.id == tournament_id).with_for_update()
+    tournament = db.execute(tournament_stmt).scalars().first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Torneio não encontrado.")
 
-        investment_stmt = (
-            select(Investment)
-            .join(StakeOffer, Investment.offer_id == StakeOffer.id)
-            .where(StakeOffer.tournament_id == tournament_id)
-            .with_for_update()
-        )
-        investments = db.execute(investment_stmt).scalars().all()
-        for inv in investments:
-            pct = Decimal(str(inv.pct_comprada or 0))
-            valor_receber = q_money(prize_amount * pct / Decimal("100"))
-            inv.lucro_recebido = valor_receber
-            inv.payout_status = "PENDING"
-            total_allocated += valor_receber
-            updated_count += 1
+    investment_stmt = (
+        select(Investment)
+        .join(StakeOffer, Investment.offer_id == StakeOffer.id)
+        .where(StakeOffer.tournament_id == tournament_id)
+        .with_for_update()
+    )
+    investments = db.execute(investment_stmt).scalars().all()
+    for inv in investments:
+        pct = Decimal(str(inv.pct_comprada or 0))
+        valor_receber = q_money(prize_amount * pct / Decimal("100"))
+        inv.lucro_recebido = valor_receber
+        inv.payout_status = "PENDING"
+        total_allocated += valor_receber
+        updated_count += 1
 
-        tournament.status = "Finalizado"
+    tournament.status = "Finalizado"
+    db.commit()
 
     return {
         "success": True,
@@ -239,12 +239,12 @@ def mark_investment_paid(investment_id: int, request: Request, db: Session = Dep
         raise HTTPException(status_code=401, detail="Faça login para continuar.")
     ensure_admin_user(user)
 
-    with db.begin():
-        stmt = select(Investment).where(Investment.id == investment_id).with_for_update()
-        investment = db.execute(stmt).scalars().first()
-        if not investment:
-            raise HTTPException(status_code=404, detail="Investment não encontrado.")
-        investment.payout_status = "PAID"
+    stmt = select(Investment).where(Investment.id == investment_id).with_for_update()
+    investment = db.execute(stmt).scalars().first()
+    if not investment:
+        raise HTTPException(status_code=404, detail="Investment não encontrado.")
+    investment.payout_status = "PAID"
+    db.commit()
 
     return {"success": True, "investment_id": investment_id, "payout_status": "PAID"}
 
@@ -342,7 +342,7 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
         return RedirectResponse(url="/login", status_code=303)
     ensure_admin_user(user)
 
-    with db.begin():
+    with db.begin_nested():
         result_stmt = (
             select(MatchResult)
             .where(MatchResult.id == result_id)

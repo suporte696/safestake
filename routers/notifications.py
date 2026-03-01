@@ -28,15 +28,15 @@ def list_notifications(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
 
-    with db.begin():
-        run_scheduled_jobs(db)
-        stmt = (
-            select(Notification)
-            .where(Notification.user_id == user.id)
-            .order_by(Notification.created_at.desc(), Notification.id.desc())
-            .limit(20)
-        )
-        items = db.execute(stmt).scalars().all()
+    run_scheduled_jobs(db)
+    db.commit()
+    stmt = (
+        select(Notification)
+        .where(Notification.user_id == user.id)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .limit(20)
+    )
+    items = db.execute(stmt).scalars().all()
     return {"notifications": [serialize_notification(item) for item in items]}
 
 
@@ -46,13 +46,13 @@ def unread_count(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
 
-    with db.begin():
-        run_scheduled_jobs(db)
-        count_stmt = select(func.count(Notification.id)).where(
-            Notification.user_id == user.id,
-            Notification.read_at.is_(None),
-        )
-        count = db.execute(count_stmt).scalar_one()
+    run_scheduled_jobs(db)
+    db.commit()
+    count_stmt = select(func.count(Notification.id)).where(
+        Notification.user_id == user.id,
+        Notification.read_at.is_(None),
+    )
+    count = db.execute(count_stmt).scalar_one()
     return {"unread": int(count)}
 
 
@@ -80,6 +80,6 @@ def run_deadline_jobs(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login.")
     ensure_admin_user(user)
-    with db.begin():
-        result = run_scheduled_jobs(db)
+    result = run_scheduled_jobs(db)
+    db.commit()
     return {"success": True, "jobs": result}
