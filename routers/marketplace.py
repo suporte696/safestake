@@ -17,7 +17,7 @@ from services.jobs import run_scheduled_jobs
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 
-DEFAULT_AVATAR = "https://i.pravatar.cc/120?img=48"
+DEFAULT_AVATAR = "/static/img/safestake-icon.png"
 
 
 def serialize_offer(offer: StakeOffer) -> dict:
@@ -349,16 +349,18 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         offer_stmt = (
             select(StakeOffer)
             .where(StakeOffer.id == offer_id)
-            .options(joinedload(StakeOffer.tournament))
             .with_for_update()
         )
         offer = db.execute(offer_stmt).scalars().first()
-        if not offer or not offer.tournament:
+        if not offer:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+        tournament = db.execute(select(Tournament).where(Tournament.id == offer.tournament_id)).scalars().first()
+        if not tournament:
+            raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
         if offer.escrow_status != "COLLECTING":
             raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para investimento.")
 
-        buyin = Decimal(str(offer.tournament.buyin))
+        buyin = Decimal(str(tournament.buyin))
         markup = Decimal(str(offer.markup))
         total_pct = Decimal(str(offer.total_disponivel_pct))
         sold_pct = Decimal(str(offer.vendido_pct))
