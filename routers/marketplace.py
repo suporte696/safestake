@@ -200,7 +200,16 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             .order_by(PixTransaction.created_at.desc(), PixTransaction.id.desc())
             .limit(10)
         )
-        pix_transactions = db.execute(stmt_tx).scalars().all()
+        raw_txs = db.execute(stmt_tx).scalars().all()
+        for tx in raw_txs:
+            dt = tx.created_at
+            if not dt:
+                continue
+            # Garantimos que o datetime está com timezone e convertemos para horário de São Paulo
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            tx.created_at_local = dt.astimezone(LOCAL_TZ)
+        pix_transactions = raw_txs
 
     bids_received = []
     my_bids = []

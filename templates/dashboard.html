@@ -87,7 +87,10 @@
               <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
               {% endif %}
             </td>
-            <td class="py-3 text-gray-400">{{ tx.created_at.strftime("%d/%m %H:%M") if tx.created_at else "-" }}</td>
+            <td class="py-3 text-gray-400">
+              {% set dt = tx.created_at_local or tx.created_at %}
+              {{ dt.strftime("%d/%m %H:%M") if dt else "-" }}
+            </td>
           </tr>
           {% else %}
           <tr>
