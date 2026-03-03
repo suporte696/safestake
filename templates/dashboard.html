@@ -51,7 +51,8 @@
           type="button"
           class="px-3 py-1 rounded-full border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/10 transition text-xs"
         >
-          Atualizar saldo
+          <span id="refreshBalanceBtnLabel">Atualizar saldo</span>
+          <span id="refreshBalanceBtnSpinner" class="hidden inline-block ml-2 w-3 h-3 border-2 border-emerald-300/40 border-t-emerald-300 rounded-full align-[-2px] animate-spin"></span>
         </button>
         <span class="text-xs text-gray-400">Últimas 10 transações</span>
       </div>
@@ -269,6 +270,8 @@
   const submitDepositBtn = document.getElementById("submitDeposit");
   const depositAmountInput = document.getElementById("depositAmount");
   const refreshBalanceBtn = document.getElementById("refreshBalanceBtn");
+  const refreshBalanceBtnLabel = document.getElementById("refreshBalanceBtnLabel");
+  const refreshBalanceBtnSpinner = document.getElementById("refreshBalanceBtnSpinner");
 
   function openDepositModal() {
     depositModal?.classList.remove("hidden");
@@ -330,6 +333,8 @@
     const externalRefFromQuery = query.get("external_reference") || "";
 
     refreshBalanceBtn.disabled = true;
+    refreshBalanceBtnLabel.textContent = "Atualizando...";
+    refreshBalanceBtnSpinner?.classList.remove("hidden");
     try {
       let creditedAny = false;
       for (const row of pendingRows) {
@@ -364,6 +369,8 @@
       window.showToast("Falha ao atualizar saldo.", "error");
     } finally {
       refreshBalanceBtn.disabled = false;
+      refreshBalanceBtnLabel.textContent = "Atualizar saldo";
+      refreshBalanceBtnSpinner?.classList.add("hidden");
     }
   });
 

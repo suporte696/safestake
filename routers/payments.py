@@ -486,7 +486,7 @@ async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(
     if provided_txid and txid != provided_txid:
         raise HTTPException(status_code=400, detail="txid informado não corresponde ao external_reference do pagamento.")
 
-    with db.begin():
+    try:
         tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
         tx = db.execute(tx_stmt).scalars().first()
         if not tx:
@@ -495,6 +495,14 @@ async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(
             raise HTTPException(status_code=403, detail="Você não tem permissão para reconciliar esta transação.")
 
         credited = _credit_tx_wallet_if_needed(db, tx)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception:
+        db.rollback()
+        logger.exception("MP manual reconcile failed: txid=%s payment_id=%s", txid, payment_id)
+        raise HTTPException(status_code=500, detail="Falha ao reconciliar pagamento.") from None
 
     logger.info(
         "MP manual reconcile: user_id=%s txid=%s payment_id=%s credited=%s",
