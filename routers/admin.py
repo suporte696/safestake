@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +17,7 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 FEE_RATE = Decimal("0.08")
 MONEY_Q = Decimal("0.01")
+LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def q_money(value: Decimal) -> Decimal:
@@ -173,7 +175,10 @@ def create_admin_tournament_offer(
     data_hora = None
     if start_time:
         try:
-            data_hora = datetime.fromisoformat(start_time)
+            local_dt = datetime.fromisoformat(start_time)
+            if local_dt.tzinfo is None:
+                local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
+            data_hora = local_dt
         except ValueError:
             raise HTTPException(status_code=400, detail="Data/hora inválida.")
 

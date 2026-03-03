@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -18,30 +19,23 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 
 DEFAULT_AVATAR = "/static/img/safestake-icon.png"
+LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def _is_offer_closed_by_start_time(offer: StakeOffer) -> bool:
     """
-    Considera a oferta encerrada somente a partir do horário de início do torneio.
-
-    - Se a data/hora estiver sem timezone (ingestão via formulário HTML), comparamos
-      com o horário local do servidor, também sem timezone.
-    - Se estiver com timezone, convertemos ambos para UTC antes da comparação.
+    Considera a oferta encerrada somente a partir do horário de início do torneio
+    na hora de São Paulo, comparando sempre em UTC para evitar problemas de fuso.
     """
     tournament = offer.tournament
     if not tournament or not tournament.data_hora:
         return False
 
     start_at = tournament.data_hora
-
-    # Datetime "naive": veio provavelmente de um formulário sem informação de fuso.
-    # Nesse caso, usamos a hora local do servidor para comparação, evitando tratar
-    # como UTC (o que poderia encerrar a oferta antes da hora esperada).
     if start_at.tzinfo is None:
-        now_local = datetime.now()
-        return now_local >= start_at
+        # Datas antigas ou salvas sem timezone: assumimos que foram cadastradas em horário local (São Paulo)
+        start_at = start_at.replace(tzinfo=LOCAL_TZ)
 
-    # Datetime com timezone: normalizamos para UTC e comparamos em UTC.
     start_utc = start_at.astimezone(timezone.utc)
     now_utc = datetime.now(timezone.utc)
     return now_utc >= start_utc
@@ -315,7 +309,11 @@ def create_player_offer(
     data_hora = None
     if start_time:
         try:
-            data_hora = datetime.fromisoformat(start_time)
+            # Valor vindo de <input type="datetime-local"> (sem timezone).
+            local_dt = datetime.fromisoformat(start_time)
+            if local_dt.tzinfo is None:
+                local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
+            data_hora = local_dt
         except ValueError:
             data_hora = None
 
