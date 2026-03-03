@@ -3,6 +3,8 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 import os
 import logging
+import hashlib
+import hmac
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -69,6 +71,64 @@ def _extract_payment_id(payload: dict[str, Any], request: Request) -> str | None
         return resource.rsplit("/", 1)[-1].strip() or None
 
     return None
+
+
+def _parse_mp_signature(signature_header: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in signature_header.split(","):
+        part = item.strip()
+        if "=" not in part:
+            continue
+        key, value = part.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+
+def _extract_notification_data_id(payload: dict[str, Any], request: Request) -> str | None:
+    query_data_id = request.query_params.get("data.id")
+    if query_data_id:
+        return str(query_data_id)
+
+    data = payload.get("data")
+    if isinstance(data, dict) and data.get("id"):
+        return str(data["id"])
+
+    if payload.get("id"):
+        return str(payload["id"])
+    return None
+
+
+def _is_valid_mp_signature(request: Request, payload: dict[str, Any]) -> bool:
+    secret = os.getenv("MERCADOPAGO_WEBHOOK_SECRET", "").strip()
+    if not secret:
+        return True
+
+    signature_header = request.headers.get("x-signature", "")
+    request_id = request.headers.get("x-request-id", "")
+    data_id = _extract_notification_data_id(payload, request)
+    if not signature_header or not request_id or not data_id:
+        logger.warning(
+            "MP webhook signature validation failed: missing fields signature=%s request_id=%s data_id=%s",
+            bool(signature_header),
+            bool(request_id),
+            bool(data_id),
+        )
+        return False
+
+    signature_parts = _parse_mp_signature(signature_header)
+    ts = signature_parts.get("ts")
+    v1 = signature_parts.get("v1")
+    if not ts or not v1:
+        logger.warning("MP webhook signature validation failed: invalid x-signature format")
+        return False
+
+    manifest = f"id:{data_id};request-id:{request_id};ts:{ts};"
+    expected = hmac.new(
+        secret.encode("utf-8"),
+        msg=manifest.encode("utf-8"),
+        digestmod=hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(expected, v1)
 
 
 def _extract_notification_topic(payload: dict[str, Any], request: Request) -> str:
@@ -227,6 +287,12 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
     amount = _extract_and_validate_amount(payload)
     txid = _create_pending_tx(db, user.id, amount)
     base_url = _resolve_base_url(request)
+    if not base_url.lower().startswith("https://"):
+        logger.error("MP deposit blocked: invalid public base URL '%s'", base_url)
+        raise HTTPException(
+            status_code=500,
+            detail="Configuração inválida para Mercado Pago. Defina PUBLIC_BASE_URL com URL HTTPS pública.",
+        )
     logger.info(
         "MP deposit started: user_id=%s txid=%s amount=%s base_url=%s",
         user.id,
@@ -283,6 +349,10 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
             payload = await request.json()
         except Exception:
             payload = {}
+
+        if not _is_valid_mp_signature(request, payload):
+            logger.warning("MP webhook rejected: invalid signature")
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         payment_id = _extract_payment_id(payload, request)
         topic = _extract_notification_topic(payload, request)
