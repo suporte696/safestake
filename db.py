@@ -13,6 +13,9 @@ def get_database_url() -> str:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL não configurada.")
+    # Railway/Heroku às vezes fornecem URL com "postgres://", mas o SQLAlchemy usa "postgresql://".
+    if database_url.startswith("postgres://"):
+        database_url = "postgresql://" + database_url[len("postgres://") :]
     return database_url
 
 
