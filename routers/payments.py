@@ -14,7 +14,12 @@ from db import get_db
 from models import PixTransaction, Wallet
 from routers.auth import ensure_user_not_blocked, fetch_current_user
 from services.infinitepay import generate_checkout_link
-from services.mercadopago_service import create_mp_preference, get_mp_merchant_order, get_mp_payment
+from services.mercadopago_service import (
+    create_mp_preference,
+    get_mp_merchant_order,
+    get_mp_payment,
+    search_mp_payment_by_external_reference,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -41,21 +46,30 @@ def ensure_wallet_for_user(db: Session, user_id: int, with_lock: bool = False) -
     return wallet
 
 
-def _extract_payment_id(payload: dict[str, Any], request: Request) -> str | None:
-    query_candidates = (
+def _extract_payment_id(payload: dict[str, Any], request: Request, topic: str = "") -> str | None:
+    normalized_topic = (topic or "").lower()
+    is_payment_topic = "payment" in normalized_topic
+    is_order_topic = "merchant_order" in normalized_topic or normalized_topic.startswith("order")
+
+    query_candidates = [
         request.query_params.get("data.id"),
-        request.query_params.get("id"),
         request.query_params.get("payment_id"),
-    )
+    ]
+    if is_payment_topic and not is_order_topic:
+        query_candidates.append(request.query_params.get("id"))
+
     for candidate in query_candidates:
         if candidate:
             return str(candidate)
 
-    direct_candidates = (
+    direct_candidates = [
         payload.get("data.id"),
-        payload.get("id"),
         payload.get("payment_id"),
-    )
+    ]
+    payload_type = str(payload.get("type") or "").lower()
+    payload_action = str(payload.get("action") or "").lower()
+    if is_payment_topic or payload_type == "payment" or payload_action.startswith("payment."):
+        direct_candidates.append(payload.get("id"))
     for candidate in direct_candidates:
         if candidate:
             return str(candidate)
@@ -85,9 +99,16 @@ def _parse_mp_signature(signature_header: str) -> dict[str, str]:
 
 
 def _extract_notification_data_id(payload: dict[str, Any], request: Request) -> str | None:
-    query_data_id = request.query_params.get("data.id")
-    if query_data_id:
-        return str(query_data_id)
+    query_candidates = (
+        request.query_params.get("data.id"),
+        request.query_params.get("data[id]"),
+        request.query_params.get("id"),
+        request.query_params.get("payment_id"),
+        request.query_params.get("merchant_order_id"),
+    )
+    for candidate in query_candidates:
+        if candidate:
+            return str(candidate)
 
     data = payload.get("data")
     if isinstance(data, dict) and data.get("id"):
@@ -108,10 +129,11 @@ def _is_valid_mp_signature(request: Request, payload: dict[str, Any]) -> bool:
     data_id = _extract_notification_data_id(payload, request)
     if not signature_header or not request_id or not data_id:
         logger.warning(
-            "MP webhook signature validation failed: missing fields signature=%s request_id=%s data_id=%s",
+            "MP webhook signature validation failed: missing fields signature=%s request_id=%s data_id=%s query=%s",
             bool(signature_header),
             bool(request_id),
             bool(data_id),
+            str(request.query_params),
         )
         return False
 
@@ -250,6 +272,15 @@ def _resolve_base_url(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _credit_tx_wallet_if_needed(db: Session, tx: PixTransaction) -> bool:
+    if tx.status == "PAID":
+        return False
+    tx.status = "PAID"
+    wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
+    wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+    return True
+
+
 @router.post("/api/deposit/infinitepay")
 async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
@@ -354,8 +385,8 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
             logger.warning("MP webhook rejected: invalid signature")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-        payment_id = _extract_payment_id(payload, request)
         topic = _extract_notification_topic(payload, request)
+        payment_id = _extract_payment_id(payload, request, topic=topic)
         logger.info("MP webhook received: topic=%s payment_id=%s", topic, payment_id)
         if not payment_id and ("merchant_order" in topic or topic.startswith("order")):
             merchant_order_id = _extract_merchant_order_id(payload, request)
@@ -391,10 +422,8 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
                 logger.warning("MP webhook tx not found: txid=%s payment_id=%s", txid, payment_id)
                 return {"status": "ok"}
 
-            if tx.status != "PAID":
-                tx.status = "PAID"
-                wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
-                wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+            credited = _credit_tx_wallet_if_needed(db, tx)
+            if credited:
                 logger.info(
                     "MP payment credited: txid=%s payment_id=%s user_id=%s amount=%s",
                     txid,
@@ -404,8 +433,80 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
                 )
             else:
                 logger.info("MP webhook duplicate ignored: txid=%s payment_id=%s", txid, payment_id)
+    except HTTPException:
+        raise
     except Exception:
         logger.exception("MP webhook processing error")
         return {"status": "ok"}
 
     return {"status": "ok"}
+
+
+@router.post("/api/deposit/mercadopago/reconcile")
+async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para reconciliar o depósito.")
+    ensure_user_not_blocked(user)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+
+    payment_id = str(payload.get("payment_id") or "").strip()
+    provided_txid = str(payload.get("txid") or payload.get("external_reference") or "").strip()
+    if not payment_id and not provided_txid:
+        raise HTTPException(status_code=400, detail="Informe payment_id ou txid para reconciliar.")
+
+    if not payment_id and provided_txid:
+        payment_match = await search_mp_payment_by_external_reference(provided_txid)
+        if payment_match and payment_match.get("id"):
+            payment_id = str(payment_match["id"]).strip()
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Não foi possível localizar pagamento no Mercado Pago para o txid informado.",
+            )
+
+    payment_response = await get_mp_payment(payment_id)
+    payment_data = (payment_response or {}).get("response") or {}
+    payment_status = str(payment_data.get("status") or "").strip().lower()
+    if payment_status != "approved":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Pagamento ainda não aprovado no Mercado Pago (status atual: {payment_status or 'desconhecido'}).",
+        )
+
+    txid = str(payment_data.get("external_reference") or "").strip()
+    if not txid:
+        txid = provided_txid
+    if not txid:
+        raise HTTPException(status_code=400, detail="Não foi possível obter txid/external_reference do pagamento.")
+    if provided_txid and txid != provided_txid:
+        raise HTTPException(status_code=400, detail="txid informado não corresponde ao external_reference do pagamento.")
+
+    with db.begin():
+        tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
+        tx = db.execute(tx_stmt).scalars().first()
+        if not tx:
+            raise HTTPException(status_code=404, detail="Transação não encontrada para o txid informado.")
+        if user.tipo != "admin" and tx.user_id != user.id:
+            raise HTTPException(status_code=403, detail="Você não tem permissão para reconciliar esta transação.")
+
+        credited = _credit_tx_wallet_if_needed(db, tx)
+
+    logger.info(
+        "MP manual reconcile: user_id=%s txid=%s payment_id=%s credited=%s",
+        user.id,
+        txid,
+        payment_id,
+        credited,
+    )
+    return {
+        "success": True,
+        "txid": txid,
+        "payment_id": payment_id,
+        "transaction_status": "PAID" if credited else "PAID",
+        "credited_now": credited,
+    }

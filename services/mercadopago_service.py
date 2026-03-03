@@ -138,3 +138,36 @@ async def get_mp_merchant_order(merchant_order_id: str) -> dict[str, Any]:
     sdk = _get_sdk()
     raw_response = await run_in_threadpool(sdk.merchant_order().get, merchant_order_id)
     return _normalize_response(raw_response)
+
+
+async def search_mp_payment_by_external_reference(txid: str) -> dict[str, Any] | None:
+    sdk = _get_sdk()
+    search_payload: dict[str, Any] = {
+        "external_reference": txid,
+        "sort": "date_created",
+        "criteria": "desc",
+    }
+    raw_response = await run_in_threadpool(sdk.payment().search, search_payload)
+    response = _normalize_response(raw_response)
+    data = (response or {}).get("response") or {}
+    results = data.get("results")
+    if not isinstance(results, list):
+        return None
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        ext_ref = str(item.get("external_reference") or "").strip()
+        if ext_ref != txid:
+            continue
+        status = str(item.get("status") or "").strip().lower()
+        if status == "approved":
+            return item
+
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        ext_ref = str(item.get("external_reference") or "").strip()
+        if ext_ref == txid:
+            return item
+    return None

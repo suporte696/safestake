@@ -45,10 +45,16 @@
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
       <h2 class="font-title text-xl uppercase">Depósitos Mercado Pago</h2>
-      <span class="text-xs text-gray-400">Últimas 10 transações</span>
-    </div>
-    <div class="mb-4 border border-amber-400/40 bg-amber-400/10 text-amber-300 rounded-xl px-3 py-2 text-xs">
-      Pagamentos no Mercado Pago podem levar até 24h para refletir no saldo durante o período inicial da integração.
+      <div class="flex items-center gap-3">
+        <button
+          id="refreshBalanceBtn"
+          type="button"
+          class="px-3 py-1 rounded-full border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/10 transition text-xs"
+        >
+          Atualizar saldo
+        </button>
+        <span class="text-xs text-gray-400">Últimas 10 transações</span>
+      </div>
     </div>
     <div class="overflow-x-auto">
       <table class="w-full text-sm text-left text-gray-300">
@@ -62,7 +68,7 @@
         </thead>
         <tbody class="divide-y divide-white/5">
           {% for tx in pix_transactions %}
-          <tr class="hover:bg-white/5">
+          <tr class="hover:bg-white/5" data-txid="{{ tx.order_nsu }}" data-status="{{ tx.status }}">
             <td class="py-3 font-mono text-xs">{{ tx.order_nsu }}</td>
             <td class="py-3 font-mono">R$ {{ "%.2f"|format(tx.amount) }}</td>
             <td class="py-3">
@@ -262,6 +268,7 @@
   const closeDepositModalBtn = document.getElementById("closeDepositModal");
   const submitDepositBtn = document.getElementById("submitDeposit");
   const depositAmountInput = document.getElementById("depositAmount");
+  const refreshBalanceBtn = document.getElementById("refreshBalanceBtn");
 
   function openDepositModal() {
     depositModal?.classList.remove("hidden");
@@ -306,6 +313,57 @@
       window.showToast("Falha de conexão ao iniciar depósito.", "error");
     } finally {
       submitDepositBtn.disabled = false;
+    }
+  });
+
+  refreshBalanceBtn?.addEventListener("click", async () => {
+    const pendingRows = Array.from(
+      document.querySelectorAll('tr[data-status="PENDING"][data-txid]')
+    );
+    if (!pendingRows.length) {
+      window.showToast("Não há depósitos pendentes para atualizar.");
+      return;
+    }
+
+    const query = new URLSearchParams(window.location.search);
+    const paymentIdFromQuery = query.get("payment_id") || query.get("collection_id") || "";
+    const externalRefFromQuery = query.get("external_reference") || "";
+
+    refreshBalanceBtn.disabled = true;
+    try {
+      let creditedAny = false;
+      for (const row of pendingRows) {
+        const txid = row.getAttribute("data-txid");
+        if (!txid) continue;
+
+        const payload = { txid };
+        if (paymentIdFromQuery && externalRefFromQuery === txid) {
+          payload.payment_id = paymentIdFromQuery;
+        }
+
+        const response = await fetch("/api/deposit/mercadopago/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          continue;
+        }
+        if (data.credited_now || data.transaction_status === "PAID") {
+          creditedAny = true;
+        }
+      }
+      if (creditedAny) {
+        window.showToast("Saldo atualizado com sucesso.");
+        window.location.reload();
+        return;
+      }
+      window.showToast("Nenhum depósito pendente foi conciliado agora.", "error");
+    } catch (error) {
+      window.showToast("Falha ao atualizar saldo.", "error");
+    } finally {
+      refreshBalanceBtn.disabled = false;
     }
   });
 
