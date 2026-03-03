@@ -52,7 +52,12 @@
             <p class="font-semibold">{{ offer.player_name }}</p>
           </div>
         </div>
-        <span class="text-xs text-emerald-400 font-mono">Markup {{ offer.markup }}</span>
+        <div class="flex items-center gap-2">
+          {% if offer.is_closed %}
+          <span class="text-xs px-2 py-1 rounded-full border border-red-500/50 text-red-400">Encerrada</span>
+          {% endif %}
+          <span class="text-xs text-emerald-400 font-mono">Markup {{ offer.markup }}</span>
+        </div>
       </div>
 
       <div class="space-y-2">
@@ -87,12 +92,21 @@
             {{ offer.total_pct - offer.sold_pct }}% de {{ offer.total_pct }}%
           </p>
         </div>
+        {% if offer.can_support %}
         <a
           href="/stake/{{ offer.id }}"
           class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
         >
           Apoiar
         </a>
+        {% else %}
+        <a
+          href="/stake/{{ offer.id }}"
+          class="px-4 py-2 rounded-full border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition"
+        >
+          Ver detalhes
+        </a>
+        {% endif %}
       </div>
     </article>
     {% endfor %}

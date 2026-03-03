@@ -20,9 +20,26 @@ router = APIRouter()
 DEFAULT_AVATAR = "/static/img/safestake-icon.png"
 
 
+def _is_offer_closed_by_start_time(offer: StakeOffer) -> bool:
+    tournament = offer.tournament
+    if not tournament or not tournament.data_hora:
+        return False
+    start_at = tournament.data_hora
+    if start_at.tzinfo is None:
+        start_at = start_at.replace(tzinfo=timezone.utc)
+    else:
+        start_at = start_at.astimezone(timezone.utc)
+    return datetime.now(timezone.utc) >= start_at
+
+
 def serialize_offer(offer: StakeOffer) -> dict:
     tournament = offer.tournament
     player = offer.player
+    total_pct = Decimal(str(offer.total_disponivel_pct or 0))
+    sold_pct = Decimal(str(offer.vendido_pct or 0))
+    available_pct = total_pct - sold_pct
+    is_closed = _is_offer_closed_by_start_time(offer)
+    can_support = offer.escrow_status == "COLLECTING" and available_pct > 0 and not is_closed
     return {
         "id": offer.id,
         "player_name": player.nome if player else "Player",
@@ -35,9 +52,12 @@ def serialize_offer(offer: StakeOffer) -> dict:
         ),
         "buyin": tournament.buyin if tournament else 0,
         "markup": offer.markup,
-        "total_pct": offer.total_disponivel_pct,
-        "sold_pct": offer.vendido_pct,
+        "total_pct": total_pct,
+        "sold_pct": sold_pct,
+        "available_pct": available_pct,
         "start_time": tournament.data_hora if tournament else None,
+        "is_closed": is_closed,
+        "can_support": can_support,
     }
 
 
@@ -359,6 +379,8 @@ async def invest(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
         if offer.escrow_status != "COLLECTING":
             raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para investimento.")
+        if _is_offer_closed_by_start_time(offer):
+            raise HTTPException(status_code=400, detail="Esta oferta está encerrada para apoio.")
 
         buyin = Decimal(str(tournament.buyin))
         markup = Decimal(str(offer.markup))
@@ -443,6 +465,8 @@ async def bid_create(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
         if offer.escrow_status != "COLLECTING":
             raise HTTPException(status_code=400, detail="Escrow desta oferta não está mais aberto para propostas.")
+        if _is_offer_closed_by_start_time(offer):
+            raise HTTPException(status_code=400, detail="Esta oferta está encerrada para novas propostas.")
         buyin = Decimal(str(offer.tournament.buyin))
         if buyin <= 0:
             raise HTTPException(status_code=400, detail="Buy-in inválido para receber propostas.")
@@ -525,6 +549,12 @@ async def bid_respond(
         if saldo_bloq < amount:
             bid.status = "REJECTED"
             raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente para processar a proposta.")
+
+        if action == "ACCEPT" and _is_offer_closed_by_start_time(offer):
+            backer_wallet.saldo_bloqueado = saldo_bloq - amount
+            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+            bid.status = "REJECTED"
+            raise HTTPException(status_code=400, detail="Esta oferta está encerrada e não aceita novas confirmações.")
 
         if action == "REJECT":
             backer_wallet.saldo_bloqueado = saldo_bloq - amount

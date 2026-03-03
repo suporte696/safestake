@@ -17,7 +17,12 @@
           <p class="text-xl font-semibold">{{ offer.player_name if offer else 'Jogador Elite' }}</p>
         </div>
       </div>
-      <span class="font-mono text-emerald-400 text-sm">Markup {{ offer.markup if offer else '1.10' }}</span>
+      <div class="flex items-center gap-2">
+        {% if offer.is_closed %}
+        <span class="text-xs px-2 py-1 rounded-full border border-red-500/50 text-red-400">Encerrada</span>
+        {% endif %}
+        <span class="font-mono text-emerald-400 text-sm">Markup {{ offer.markup if offer else '1.10' }}</span>
+      </div>
     </div>
 
     <div class="space-y-3">
@@ -73,6 +78,11 @@
         Insira o valor desejado e veja a porcentagem estimada da cota.
       </p>
     </div>
+    {% if offer.is_closed %}
+    <div class="border border-red-500/40 bg-red-500/10 text-red-300 rounded-xl px-3 py-2 text-sm">
+      Esta oferta está encerrada. Você ainda pode consultar os detalhes, mas não é mais possível apoiar.
+    </div>
+    {% endif %}
 
     <div class="space-y-4">
       <label class="text-xs text-gray-400">Valor do investimento</label>
@@ -98,7 +108,8 @@
 
     <button
       id="confirmInvest"
-      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+      {% if offer.is_closed %}disabled{% endif %}
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30 {% if offer.is_closed %}opacity-60 cursor-not-allowed{% endif %}"
     >
       Confirmar apoio
     </button>
@@ -106,7 +117,8 @@
     <button
       type="button"
       id="openBidModal"
-      class="w-full px-5 py-3 rounded-full border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/10 transition"
+      {% if offer.is_closed %}disabled{% endif %}
+      class="w-full px-5 py-3 rounded-full border border-emerald-400/60 text-emerald-300 hover:bg-emerald-400/10 transition {% if offer.is_closed %}opacity-60 cursor-not-allowed{% endif %}"
     >
       Fazer oferta personalizada (Bid)
     </button>
@@ -173,6 +185,7 @@
   const markup = Number("{{ offer.markup if offer else 1 }}");
   const totalPct = Number("{{ offer.total_pct if offer else 0 }}");
   const soldPct = Number("{{ offer.sold_pct if offer else 0 }}");
+  const isClosed = {{ "true" if offer and offer.is_closed else "false" }};
   const hasWallet = {{ "true" if wallet else "false" }};
   const walletAvailable = Number("{{ wallet.saldo_disponivel if wallet else 0 }}");
   const availablePct = Math.max(0, totalPct - soldPct);
@@ -200,6 +213,9 @@
     }
     if (!maxInvestAmount || maxInvestAmount <= 0 || availablePct <= 0) {
       return { valid: false, reason: "Esta oferta não possui cota disponível no momento." };
+    }
+    if (isClosed) {
+      return { valid: false, reason: "Oferta encerrada. Não é mais possível apoiar." };
     }
     if (amount > maxInvestAmount) {
       return {
@@ -262,6 +278,10 @@
   updateEstimate();
 
   confirmButton?.addEventListener("click", async () => {
+    if (isClosed) {
+      window.showToast("Esta oferta está encerrada para apoio.", "error");
+      return;
+    }
     const amount = Number(input.value || 0);
     if (!offerId) {
       window.showToast("Oferta inválida.", "error");
@@ -309,6 +329,10 @@
   const submitBidBtn = document.getElementById("submitBid");
 
   function openBidModal() {
+    if (isClosed) {
+      window.showToast("Esta oferta está encerrada para novas propostas.", "error");
+      return;
+    }
     if (bidModal) {
       bidModal.classList.remove("hidden");
       bidAmountInput.value = "";
