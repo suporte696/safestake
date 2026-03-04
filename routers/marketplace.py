@@ -24,19 +24,30 @@ LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 def _is_offer_closed_by_start_time(offer: StakeOffer) -> bool:
     """
-    Considera a oferta encerrada somente a partir do horário de início do torneio
-    na hora de São Paulo, comparando sempre em UTC para evitar problemas de fuso.
+    Considera a oferta encerrada somente a partir do horário de início do torneio.
+
+    Importante: sempre interpretamos o horário salvo em `data_hora` como
+    horário de São Paulo, independente do timezone que veio do banco.
+    Assim, tanto registros antigos (salvos em UTC) quanto novos (salvos com
+    timezone de São Paulo) passam a se comportar corretamente.
     """
     tournament = offer.tournament
     if not tournament or not tournament.data_hora:
         return False
 
     start_at = tournament.data_hora
-    if start_at.tzinfo is None:
-        # Datas antigas ou salvas sem timezone: assumimos que foram cadastradas em horário local (São Paulo)
-        start_at = start_at.replace(tzinfo=LOCAL_TZ)
-
-    start_utc = start_at.astimezone(timezone.utc)
+    # Ignora o timezone armazenado e interpreta sempre como horário local (São Paulo)
+    start_local = datetime(
+        start_at.year,
+        start_at.month,
+        start_at.day,
+        start_at.hour,
+        start_at.minute,
+        start_at.second,
+        start_at.microsecond,
+        tzinfo=LOCAL_TZ,
+    )
+    start_utc = start_local.astimezone(timezone.utc)
     now_utc = datetime.now(timezone.utc)
     return now_utc >= start_utc
 
