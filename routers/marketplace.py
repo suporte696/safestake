@@ -24,6 +24,24 @@ DEFAULT_AVATAR = "/static/img/safestake-icon.png"
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
+def ensure_wallet_for_user(db: Session, user_id: int, with_lock: bool = False) -> Wallet:
+    stmt = select(Wallet).where(Wallet.user_id == user_id)
+    if with_lock:
+        stmt = stmt.with_for_update()
+    wallet = db.execute(stmt).scalars().first()
+    if wallet:
+        return wallet
+    wallet = Wallet(
+        user_id=user_id,
+        saldo_disponivel=Decimal("0"),
+        saldo_bloqueado=Decimal("0"),
+        saldo_em_jogo=Decimal("0"),
+    )
+    db.add(wallet)
+    db.flush()
+    return wallet
+
+
 def _is_offer_closed_by_start_time(offer: StakeOffer) -> bool:
     """
     Considera a oferta encerrada somente a partir do horário de início do torneio.
@@ -606,9 +624,7 @@ async def invest(request: Request, db: Session = Depends(get_db)):
 
         user.wallet.saldo_disponivel = user.wallet.saldo_disponivel - amount
         user.wallet.saldo_em_jogo = user.wallet.saldo_em_jogo + amount
-        player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
-        if not player_wallet:
-            raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
+        player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
         player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
         offer.vendido_pct = sold_pct + share_pct
         investment = Investment(
@@ -793,9 +809,7 @@ async def bid_respond(
 
         backer_wallet.saldo_bloqueado = saldo_bloq - amount
         backer_wallet.saldo_em_jogo = Decimal(str(backer_wallet.saldo_em_jogo)) + amount
-        player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
-        if not player_wallet:
-            raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
+        player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
         player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
         offer.vendido_pct = sold_pct + share_pct
         investment = Investment(
