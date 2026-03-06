@@ -1,12 +1,15 @@
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+import logging
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from models import StakeOffer, TournamentEscrow, Wallet
+from models import StakeOffer, Tournament, TournamentEscrow, Wallet
 from routers.escrow import release_offer_escrow_to_player
 from services.notification_jobs import run_result_deadline_jobs
+
+logger = logging.getLogger(__name__)
 
 
 def _q_money(value: Decimal) -> Decimal:
@@ -23,18 +26,25 @@ def _normalize_to_utc(value: datetime | None) -> datetime | None:
 
 def run_escrow_start_jobs(db: Session) -> dict:
     now_utc = datetime.now(timezone.utc)
+    # IMPORTANTE: não usar joinedload + FOR UPDATE no Postgres.
+    # Isso pode gerar LEFT OUTER JOIN e quebrar com "cannot be applied to nullable side".
     stmt = (
         select(TournamentEscrow)
         .where(TournamentEscrow.status == "COMPLETE")
-        .options(joinedload(TournamentEscrow.offer).joinedload(StakeOffer.tournament))
         .with_for_update()
     )
     escrows = db.execute(stmt).scalars().all()
     released = 0
 
     for escrow in escrows:
-        offer = escrow.offer
-        tournament = offer.tournament if offer else None
+        offer = db.execute(
+            select(StakeOffer).where(StakeOffer.id == escrow.offer_id).with_for_update()
+        ).scalars().first()
+        if not offer:
+            continue
+        tournament = db.execute(
+            select(Tournament).where(Tournament.id == offer.tournament_id)
+        ).scalars().first()
         if not offer or not tournament:
             continue
         start_at_utc = _normalize_to_utc(tournament.data_hora)
@@ -55,6 +65,14 @@ def run_escrow_start_jobs(db: Session) -> dict:
 
 
 def run_scheduled_jobs(db: Session) -> dict:
-    result_deadline = run_result_deadline_jobs(db)
-    escrow_start = run_escrow_start_jobs(db)
+    try:
+        result_deadline = run_result_deadline_jobs(db)
+    except Exception:
+        logger.exception("Falha ao executar job de prazo de resultado")
+        result_deadline = {"error": True}
+    try:
+        escrow_start = run_escrow_start_jobs(db)
+    except Exception:
+        logger.exception("Falha ao executar job de liberação de escrow")
+        escrow_start = {"error": True}
     return {"result_deadline": result_deadline, "escrow_start": escrow_start}
