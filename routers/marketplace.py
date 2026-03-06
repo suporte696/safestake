@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+import logging
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -17,6 +18,7 @@ from services.jobs import run_scheduled_jobs
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 DEFAULT_AVATAR = "/static/img/safestake-icon.png"
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
@@ -92,8 +94,11 @@ def serialize_offer(offer: StakeOffer) -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 def marketplace(request: Request, db: Session = Depends(get_db)):
-    with db.begin():
-        run_scheduled_jobs(db)
+    try:
+        with db.begin():
+            run_scheduled_jobs(db)
+    except Exception:
+        logger.exception("Falha ao executar jobs agendados no carregamento do marketplace")
     user = fetch_current_user(request, db)
     wallet_summary = None
     if user and user.wallet:
@@ -167,8 +172,11 @@ def serialize_bid(bid: StakeBid) -> dict:
 
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
-    with db.begin():
-        run_scheduled_jobs(db)
+    try:
+        with db.begin():
+            run_scheduled_jobs(db)
+    except Exception:
+        logger.exception("Falha ao executar jobs agendados no carregamento do dashboard")
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -8,6 +10,7 @@ from routers.auth import ensure_admin_user, fetch_current_user
 from services.jobs import run_scheduled_jobs
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def serialize_notification(item: Notification) -> dict:
@@ -28,8 +31,12 @@ def list_notifications(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
 
-    run_scheduled_jobs(db)
-    db.commit()
+    try:
+        run_scheduled_jobs(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao executar jobs na listagem de notificações")
     stmt = (
         select(Notification)
         .where(Notification.user_id == user.id)
@@ -46,8 +53,12 @@ def unread_count(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
 
-    run_scheduled_jobs(db)
-    db.commit()
+    try:
+        run_scheduled_jobs(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao executar jobs na contagem de notificações")
     count_stmt = select(func.count(Notification.id)).where(
         Notification.user_id == user.id,
         Notification.read_at.is_(None),
@@ -80,6 +91,11 @@ def run_deadline_jobs(request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="Faça login.")
     ensure_admin_user(user)
-    result = run_scheduled_jobs(db)
-    db.commit()
+    try:
+        result = run_scheduled_jobs(db)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao executar jobs manualmente")
+        raise HTTPException(status_code=500, detail="Falha ao executar jobs agendados. Verifique os logs.") from None
     return {"success": True, "jobs": result}
