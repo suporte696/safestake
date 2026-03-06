@@ -39,3 +39,41 @@ Fase 6 — Agendamento de call (simples)
 [x] Modelo + rota de agendamento.
 [x] Tela simples de slots/solicitação.
 [x] Status: pendente, confirmado, cancelado.
+
+Checklist — Updates e correções (PDF 06/03/2026)
+
+1) Saldo em USD + conversão PTAX
+- [x] Criar integração PTAX (BCB) para cotação USD->BRL no depósito.
+- [x] Ajustar depósitos para entrada em USD e checkout em BRL (via PTAX).
+- [x] Exibir valores de carteira e histórico principais em USD.
+- [ ] Revisar todas as telas restantes para remover qualquer referência legada em BRL.
+
+2) Saque com alerta para admin
+- [x] Criar endpoint para solicitar saque com valor + chave PIX.
+- [x] Notificar admins com nome, valor e PIX de destino.
+- [x] Exibir solicitações recentes de saque no painel admin.
+- [x] Implementar workflow completo (aprovar/reprovar saque e baixa automática de saldo).
+
+3) Oferta do jogador
+- [x] Permitir editar/corrigir oferta do jogador (quando ainda sem aportes).
+- [x] Corrigir barra de progresso para refletir venda sobre a meta da oferta.
+- [ ] Permitir edição com aportes já recebidos (com recálculo seguro de escrow).
+
+4) Resultado da partida
+- [x] Permitir correção do resultado antes da aprovação do admin.
+- [x] Notificar admin no envio/atualização de resultado.
+- [x] Notificar jogador em aprovação/reprovação.
+- [ ] Implementar evidência visual no front para status de notificação por resultado.
+
+5) Transparência de apoiadores
+- [x] Mostrar apoiadores e percentual na área do jogador.
+- [x] Mostrar apoiadores e percentual no painel admin.
+
+6) Escrow / saldo do jogador no aporte
+- [x] Atualizar saldo do jogador no momento do aporte (saldo em jogo/escrow).
+- [x] Estorno reduzindo saldo em jogo do jogador.
+- [x] Automatizar transição escrow -> disponível quando jogador confirmar início da partida.
+- [x] Adicionar opção explícita "não vou jogar" para disparar retorno automático.
+
+7) Fluxo do apoiador / navegação
+- [x] Revisar rotas e estado de sessão para reproduzir e corrigir bugs de "precisar deslogar".

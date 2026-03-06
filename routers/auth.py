@@ -210,7 +210,11 @@ def fetch_current_user(
     if not user_id:
         return None
     stmt = select(User).where(User.id == user_id).options(joinedload(User.wallet))
-    return db.execute(stmt).scalars().first()
+    user = db.execute(stmt).scalars().first()
+    if not user:
+        # Evita sessão inválida "presa" em user inexistente.
+        request.session.pop("user_id", None)
+    return user
 
 
 def get_wallet_summary(user: User | None) -> dict | None:

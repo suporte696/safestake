@@ -85,7 +85,7 @@
           <div class="hidden sm:flex flex-col text-right text-xs text-gray-400">
             <span>Carteira</span>
             <span class="font-mono text-emerald-400 text-sm">
-              R$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
+              US$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
             </span>
           </div>
           <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
@@ -169,6 +169,63 @@
         setTimeout(() => {
           toast.remove();
         }, 3000);
+      };
+
+      window.toFriendlyErrorMessage = (rawMessage, fallbackMessage = "Não foi possível concluir a ação agora.") => {
+        const message = String(rawMessage || "").trim();
+        if (!message) return fallbackMessage;
+
+        const catalog = [
+          {
+            test: "Faça login",
+            message: "Sua sessão expirou. Faça login novamente para continuar.",
+          },
+          {
+            test: "KYC pendente",
+            message: "Seu cadastro ainda está em análise. Aguarde a aprovação do KYC para usar esta função.",
+          },
+          {
+            test: "Saldo insuficiente",
+            message: "Saldo insuficiente para esta operação. Adicione saldo ou reduza o valor informado.",
+          },
+          {
+            test: "Oferta não encontrada",
+            message: "Esta oferta não está mais disponível. Atualize a página para ver as opções ativas.",
+          },
+          {
+            test: "encerrada",
+            message: "Esta oferta já foi encerrada e não aceita novas ações.",
+          },
+          {
+            test: "Carteira não encontrada",
+            message: "Não encontramos sua carteira. Atualize a página e tente novamente.",
+          },
+          {
+            test: "prize_amount",
+            message: "Informe o valor do prêmio para concluir o encerramento do torneio.",
+          },
+          {
+            test: "invalid",
+            message: "O sistema recebeu dados inválidos. Revise os campos e tente novamente.",
+          },
+        ];
+
+        const match = catalog.find((item) => message.toLowerCase().includes(item.test.toLowerCase()));
+        if (match) return match.message;
+        return message;
+      };
+
+      window.extractApiErrorMessage = async (response, fallbackMessage) => {
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch (_err) {}
+        const detail = payload?.detail || payload?.message || "";
+        return window.toFriendlyErrorMessage(detail, fallbackMessage);
+      };
+
+      window.handleNetworkError = (fallbackMessage = "Falha de conexão. Verifique sua internet e tente novamente.") => {
+        window.showToast(fallbackMessage, "error");
       };
     </script>
 

@@ -35,7 +35,7 @@
               border-amber-400/50 text-amber-400
               {% endif %}"
           >
-            {{ item.status }}
+            {% if item.status == "PENDING" %}PENDENTE{% elif item.status == "CONFIRMED" %}CONFIRMADO{% elif item.status == "CANCELLED" %}CANCELADO{% else %}{{ item.status }}{% endif %}
           </span>
         </div>
         <p class="text-sm font-mono">{{ item.scheduled_at.strftime("%d/%m/%Y %H:%M") if item.scheduled_at else "-" }}</p>

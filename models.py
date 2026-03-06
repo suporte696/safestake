@@ -54,6 +54,14 @@ class User(Base):
         back_populates="reviewed_by_user",
         foreign_keys="CallSchedule.reviewed_by",
     )
+    withdrawal_requests: Mapped[list["WithdrawalRequest"]] = relationship(
+        back_populates="user",
+        foreign_keys="WithdrawalRequest.user_id",
+    )
+    reviewed_withdrawal_requests: Mapped[list["WithdrawalRequest"]] = relationship(
+        back_populates="reviewed_by_user",
+        foreign_keys="WithdrawalRequest.reviewed_by",
+    )
 
 
 class EmailVerificationCode(Base):
@@ -310,6 +318,30 @@ class Notification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped[User] = relationship(back_populates="notifications")
+
+
+class WithdrawalRequest(Base):
+    __tablename__ = "withdrawal_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    pix_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    status: Mapped[str] = mapped_column(
+        Enum("PENDING", "APPROVED", "REJECTED", name="withdrawal_request_status"),
+        nullable=False,
+        default="PENDING",
+    )
+    admin_note: Mapped[str | None] = mapped_column(String(255))
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    user: Mapped[User] = relationship(back_populates="withdrawal_requests", foreign_keys=[user_id])
+    reviewed_by_user: Mapped[User | None] = relationship(
+        back_populates="reviewed_withdrawal_requests",
+        foreign_keys=[reviewed_by],
+    )
 
 
 class CallSchedule(Base):

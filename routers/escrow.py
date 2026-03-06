@@ -57,14 +57,30 @@ def sync_offer_escrow(db: Session, offer: StakeOffer) -> TournamentEscrow:
         escrow.status = "COMPLETE"
         escrow.completed_at = datetime.now(timezone.utc)
         offer.escrow_status = "COMPLETE"
-        player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
-        if not player_wallet:
-            raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
-        player_wallet.saldo_disponivel = q_money(Decimal(str(player_wallet.saldo_disponivel or 0)) + collected)
     elif escrow.status == "COLLECTING":
         offer.escrow_status = "COLLECTING"
 
     return escrow
+
+
+def release_offer_escrow_to_player(db: Session, offer: StakeOffer) -> dict:
+    escrow = get_offer_escrow_locked(db, offer)
+    if escrow.status != "COMPLETE":
+        return {"released_total": q_money(Decimal("0"))}
+
+    player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
+    if not player_wallet:
+        raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
+
+    collected = q_money(Decimal(str(escrow.total_collected or 0)))
+    player_em_jogo = q_money(Decimal(str(player_wallet.saldo_em_jogo or 0)))
+    released_total = q_money(min(collected, player_em_jogo))
+    if released_total > 0:
+        player_wallet.saldo_em_jogo = q_money(max(Decimal("0"), player_em_jogo - released_total))
+        player_wallet.saldo_disponivel = q_money(Decimal(str(player_wallet.saldo_disponivel or 0)) + released_total)
+    if offer.tournament and offer.tournament.status == "Aberto":
+        offer.tournament.status = "Jogando"
+    return {"released_total": released_total}
 
 
 def refund_offer_escrow(db: Session, offer: StakeOffer, reason: str = "") -> dict:
@@ -89,17 +105,12 @@ def refund_offer_escrow(db: Session, offer: StakeOffer, reason: str = "") -> dic
 
     refunded_total = q_money(refunded_total)
 
-    if escrow.status == "COMPLETE" and refunded_total > 0:
+    if refunded_total > 0:
         player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
         if not player_wallet:
             raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
-        saldo = Decimal(str(player_wallet.saldo_disponivel or 0))
-        if saldo < refunded_total:
-            raise HTTPException(
-                status_code=400,
-                detail="Jogador sem saldo suficiente para estorno de escrow completo.",
-            )
-        player_wallet.saldo_disponivel = q_money(saldo - refunded_total)
+        em_jogo_player = Decimal(str(player_wallet.saldo_em_jogo or 0))
+        player_wallet.saldo_em_jogo = q_money(max(Decimal("0"), em_jogo_player - refunded_total))
 
     escrow.status = "REFUNDED"
     escrow.refunded_at = datetime.now(timezone.utc)

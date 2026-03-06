@@ -93,7 +93,7 @@
         />
       </div>
       <div class="space-y-2">
-        <label class="text-xs text-gray-400">Buy-in (R$)</label>
+        <label class="text-xs text-gray-400">Buy-in (US$)</label>
         <input
           type="number"
           name="buyin"
@@ -172,7 +172,7 @@
           {% for tournament in active_tournaments %}
           <tr class="hover:bg-white/5">
             <td class="py-3">{{ tournament.nome }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(tournament.buyin) }}</td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(tournament.buyin) }}</td>
             <td class="py-3 text-gray-400">{{ tournament.data_hora.strftime("%d/%m/%Y %H:%M") if tournament.data_hora else "-" }}</td>
             <td class="py-3">
               <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">{{ tournament.status }}</span>
@@ -188,6 +188,25 @@
               </button>
             </td>
           </tr>
+          {% set supporters = supporters_by_tournament.get(tournament.id, []) %}
+          {% if supporters %}
+          <tr>
+            <td colspan="5" class="pb-3">
+              <div class="rounded-xl border border-white/10 p-3 text-xs text-gray-300">
+                <p class="text-gray-400 mb-2">Apoiadores e percentual:</p>
+                <div class="grid md:grid-cols-3 gap-2">
+                  {% for supporter in supporters %}
+                  <div class="border border-white/10 rounded-lg px-3 py-2">
+                    <p>{{ supporter.name }}</p>
+                    <p class="font-mono text-emerald-400">{{ "%.2f"|format(supporter.pct) }}%</p>
+                    <p class="font-mono text-gray-400">US$ {{ "%.2f"|format(supporter.amount) }}</p>
+                  </div>
+                  {% endfor %}
+                </div>
+              </div>
+            </td>
+          </tr>
+          {% endif %}
           {% endfor %}
         </tbody>
       </table>
@@ -239,8 +258,8 @@
                 {% for row in rows %}
                 <tr>
                   <td class="py-3">{{ row.apoiador_nome }}</td>
-                  <td class="py-3 font-mono">R$ {{ "%.2f"|format(row.valor_investido) }}</td>
-                  <td class="py-3 font-mono text-emerald-400">R$ {{ "%.2f"|format(row.valor_receber) }}</td>
+                  <td class="py-3 font-mono">US$ {{ "%.2f"|format(row.valor_investido) }}</td>
+                  <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(row.valor_receber) }}</td>
                   <td class="py-3 font-mono text-xs">{{ row.pix_key }}</td>
                   <td class="py-3">
                     {% if row.payout_status == "PAID" %}
@@ -271,6 +290,87 @@
         </div>
       </article>
       {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
+      <span class="text-xs text-gray-400">{{ withdrawal_requests|length }} recentes</span>
+    </div>
+    {% if not withdrawal_requests %}
+    <p class="text-sm text-gray-500">Sem solicitações registradas.</p>
+    {% else %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Usuário</th>
+            <th class="py-3">Valor</th>
+            <th class="py-3">PIX destino</th>
+            <th class="py-3">Status</th>
+            <th class="py-3">Obs.</th>
+            <th class="py-3">Data</th>
+            <th class="py-3 text-right">Ação</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for wr in withdrawal_requests %}
+          <tr>
+            <td class="py-3">
+              {{ wr.user.nome if wr.user else ("Usuário #" ~ wr.user_id) }}
+            </td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
+            <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
+            <td class="py-3">
+              {% if wr.status == "PENDING" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/40 text-amber-300">Pendente</span>
+              {% elif wr.status == "APPROVED" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">Aprovado</span>
+              {% else %}
+              <span class="px-3 py-1 rounded-full text-xs border border-red-500/40 text-red-300">Rejeitado</span>
+              {% endif %}
+            </td>
+            <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
+            <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m/%Y %H:%M") if wr.created_at else "-" }}</td>
+            <td class="py-3 text-right">
+              {% if wr.status == "PENDING" %}
+              <details class="inline-block text-left">
+                <summary class="cursor-pointer px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs">
+                  Revisar
+                </summary>
+                <div class="mt-2 p-3 border border-white/10 rounded-xl bg-[#0b0b0b] min-w-[280px]">
+                  <form method="post" action="/admin/withdrawals/{{ wr.id }}/approve" class="space-y-2">
+                    <input
+                      name="note"
+                      placeholder="Obs. opcional (aprovação)"
+                      class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs"
+                    />
+                    <button class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-xs font-semibold">
+                      Aprovar e debitar saldo
+                    </button>
+                  </form>
+                  <form method="post" action="/admin/withdrawals/{{ wr.id }}/reject" class="space-y-2 mt-2">
+                    <input
+                      name="note"
+                      placeholder="Motivo da rejeição"
+                      class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs"
+                    />
+                    <button class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-xs">
+                      Rejeitar
+                    </button>
+                  </form>
+                </div>
+              </details>
+              {% else %}
+              -
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
     {% endif %}
   </div>
@@ -355,7 +455,7 @@
     </div>
     <p id="closeTournamentText" class="text-sm text-gray-300"></p>
     <div class="space-y-2">
-      <label class="text-xs text-gray-400">Valor do Prêmio (R$)</label>
+      <label class="text-xs text-gray-400">Valor do Prêmio (US$)</label>
       <input
         id="closeTournamentPrize"
         type="number"
@@ -429,15 +529,18 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prize_amount: prizeAmount }),
       });
-      const data = await response.json();
       if (!response.ok) {
-        window.showToast(data.detail || "Erro ao encerrar torneio.", "error");
+        const message = await window.extractApiErrorMessage(
+          response,
+          "Não foi possível encerrar o torneio agora. Revise os dados e tente novamente."
+        );
+        window.showToast(message, "error");
         return;
       }
       window.showToast("Torneio encerrado e split calculado.");
       window.location.reload();
     } catch (_error) {
-      window.showToast("Falha de conexão.", "error");
+      window.handleNetworkError("Falha de conexão ao encerrar o torneio.");
     } finally {
       confirmCloseBtn.disabled = false;
     }
@@ -460,15 +563,18 @@
       btn.disabled = true;
       try {
         const response = await fetch(`/api/investments/${investmentId}/mark-paid`, { method: "POST" });
-        const data = await response.json();
         if (!response.ok) {
-          window.showToast(data.detail || "Erro ao marcar pagamento.", "error");
+          const message = await window.extractApiErrorMessage(
+            response,
+            "Não foi possível marcar o pagamento como concluído agora."
+          );
+          window.showToast(message, "error");
           return;
         }
         window.showToast("Pagamento marcado como concluído.");
         window.location.reload();
       } catch (_error) {
-        window.showToast("Falha de conexão.", "error");
+        window.handleNetworkError("Falha de conexão ao atualizar o status do pagamento.");
       } finally {
         btn.disabled = false;
       }

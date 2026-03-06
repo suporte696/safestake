@@ -67,7 +67,7 @@
               border-amber-400/50 text-amber-400
               {% endif %}"
           >
-            {{ item.status }}
+            {% if item.status == "PENDING" %}PENDENTE{% elif item.status == "CONFIRMED" %}CONFIRMADO{% elif item.status == "CANCELLED" %}CANCELADO{% else %}{{ item.status }}{% endif %}
           </span>
         </div>
         {% if item.notes %}

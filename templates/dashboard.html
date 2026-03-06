@@ -4,6 +4,16 @@
 
 {% block content %}
 <section class="space-y-8">
+  {% if request.query_params.get("access_error") == "1" %}
+  <div class="border border-amber-500/40 text-amber-300 bg-amber-500/10 px-4 py-3 rounded-xl text-sm">
+    Você não tem permissão para acessar a página solicitada. Navegue pelo menu para continuar.
+  </div>
+  {% endif %}
+  {% if request.query_params.get("withdraw_requested") == "1" %}
+  <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    Solicitação de saque enviada para o admin.
+  </div>
+  {% endif %}
   {% if user.is_blocked %}
   <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
     Conta bloqueada: {{ user.blocked_reason or "entre em contato com o admin." }}
@@ -19,38 +29,46 @@
       <h1 class="font-title text-3xl uppercase">Dashboard do Apoiador</h1>
       <p class="text-gray-300">Controle seus aportes e acompanhe o histórico de retornos.</p>
     </div>
-    <button
-      id="openDepositModal"
-      class="px-5 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
-    >
-      Adicionar saldo
-    </button>
+    <div class="flex items-center gap-2">
+      <button
+        id="openWithdrawalModal"
+        class="px-5 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition"
+      >
+        Solicitar saque
+      </button>
+      <button
+        id="openDepositModal"
+        class="px-5 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+      >
+        Adicionar saldo
+      </button>
+    </div>
   </div>
 
   <div class="grid gap-6 md:grid-cols-3">
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <p class="text-xs text-gray-400">Total Investido</p>
       <p class="text-3xl font-mono text-emerald-400 mt-2">
-        R$ {{ "%.2f"|format(total_investido) }}
+        US$ {{ "%.2f"|format(total_investido) }}
       </p>
     </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <p class="text-xs text-gray-400">Total Recebido (Histórico)</p>
       <p class="text-3xl font-mono text-white mt-2">
-        R$ {{ "%.2f"|format(total_recebido) }}
+        US$ {{ "%.2f"|format(total_recebido) }}
       </p>
     </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <p class="text-xs text-gray-400">Saldo Atual da Carteira</p>
       <p class="text-3xl font-mono text-emerald-400 mt-2">
-        R$ {{ "%.2f"|format(wallet.saldo_disponivel if wallet else 0) }}
+        US$ {{ "%.2f"|format(wallet.saldo_disponivel if wallet else 0) }}
       </p>
     </div>
   </div>
 
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="font-title text-xl uppercase">Depósitos Mercado Pago</h2>
+      <h2 class="font-title text-xl uppercase">Depósitos (crédito em USD via PTAX)</h2>
       <div class="flex items-center gap-3">
         <button
           id="refreshBalanceBtn"
@@ -77,7 +95,7 @@
           {% for tx in pix_transactions %}
           <tr class="hover:bg-white/5" data-txid="{{ tx.order_nsu }}" data-status="{{ tx.status }}">
             <td class="py-3 font-mono text-xs">{{ tx.order_nsu }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(tx.amount) }}</td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(tx.amount) }}</td>
             <td class="py-3">
               {% if tx.status == "PAID" %}
               <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Pago</span>
@@ -95,6 +113,49 @@
           {% else %}
           <tr>
             <td colspan="4" class="py-6 text-center text-gray-500">Nenhum depósito registrado.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
+      <span class="text-xs text-gray-400">Últimas 10 solicitações</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Valor</th>
+            <th class="py-3">PIX</th>
+            <th class="py-3">Status</th>
+            <th class="py-3">Observação admin</th>
+            <th class="py-3">Data</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for wr in withdrawal_requests %}
+          <tr>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
+            <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
+            <td class="py-3">
+              {% if wr.status == "PENDING" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
+              {% elif wr.status == "APPROVED" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aprovado</span>
+              {% else %}
+              <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Rejeitado</span>
+              {% endif %}
+            </td>
+            <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
+            <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m %H:%M") if wr.created_at else "-" }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="py-6 text-center text-gray-500">Nenhuma solicitação de saque registrada.</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -124,7 +185,7 @@
           <tr class="hover:bg-white/5">
             <td class="py-3">{{ bid.tournament_name }}</td>
             <td class="py-3">{{ bid.backer_name }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(bid.amount) }}</td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(bid.amount) }}</td>
             <td class="py-3 font-mono text-emerald-400">{{ bid.proposed_markup }}</td>
             <td class="py-3 text-gray-400">{{ bid.created_at.strftime("%d/%m %H:%M") if bid.created_at else "-" }}</td>
             <td class="py-3 flex gap-2">
@@ -223,9 +284,9 @@
           <tr class="hover:bg-white/5">
             <td class="py-3">{{ stake.tournament }}</td>
             <td class="py-3">{{ stake.player }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(stake.valor) }}</td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(stake.valor) }}</td>
             <td class="py-3 font-mono">{{ stake.pct }}%</td>
-            <td class="py-3 font-mono text-emerald-400">R$ {{ "%.2f"|format(stake.resultado) }}</td>
+            <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(stake.resultado) }}</td>
             <td class="py-3">
               <span
                 class="px-3 py-1 rounded-full text-xs border border-white/10 {% if stake.status == 'Jogando' %}text-emerald-400{% else %}text-gray-300{% endif %}"
@@ -248,13 +309,13 @@
       <h3 class="font-title text-lg uppercase text-emerald-400">Adicionar saldo</h3>
       <button id="closeDepositModal" type="button" class="text-gray-400 hover:text-white">✕</button>
     </div>
-    <p class="text-sm text-gray-400">Digite o valor em BRL para abrir o checkout do Mercado Pago.</p>
+    <p class="text-sm text-gray-400">Digite o valor em USD. A cobrança será convertida para BRL pela PTAX.</p>
     <div class="space-y-2">
-      <label class="text-xs text-gray-400">Valor (mínimo R$ 5,00)</label>
+      <label class="text-xs text-gray-400">Valor em USD (mínimo US$ 1,00)</label>
       <input
         id="depositAmount"
         type="number"
-        min="5"
+        min="1"
         step="0.01"
         placeholder="100.00"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
@@ -272,6 +333,43 @@
   </div>
 </div>
 
+<div id="withdrawalModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/70"></div>
+  <div class="relative max-w-md mx-auto mt-24 bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-title text-lg uppercase text-emerald-400">Solicitar saque</h3>
+      <button id="closeWithdrawalModal" type="button" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <form method="post" action="/player/withdrawals/request" class="space-y-3">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Valor (US$)</label>
+        <input
+          name="amount"
+          type="number"
+          min="0.01"
+          step="0.01"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Chave PIX de destino</label>
+        <input
+          name="pix_key"
+          value="{{ user.pix_key or '' }}"
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <button
+        type="submit"
+        class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+      >
+        Enviar solicitação
+      </button>
+    </form>
+  </div>
+</div>
+
 <script>
   const depositModal = document.getElementById("depositModal");
   const openDepositModalBtn = document.getElementById("openDepositModal");
@@ -281,6 +379,9 @@
   const refreshBalanceBtn = document.getElementById("refreshBalanceBtn");
   const refreshBalanceBtnLabel = document.getElementById("refreshBalanceBtnLabel");
   const refreshBalanceBtnSpinner = document.getElementById("refreshBalanceBtnSpinner");
+  const withdrawalModal = document.getElementById("withdrawalModal");
+  const openWithdrawalModalBtn = document.getElementById("openWithdrawalModal");
+  const closeWithdrawalModalBtn = document.getElementById("closeWithdrawalModal");
 
   function openDepositModal() {
     depositModal?.classList.remove("hidden");
@@ -298,10 +399,26 @@
     }
   });
 
+  function openWithdrawalModal() {
+    withdrawalModal?.classList.remove("hidden");
+  }
+
+  function closeWithdrawalModal() {
+    withdrawalModal?.classList.add("hidden");
+  }
+
+  openWithdrawalModalBtn?.addEventListener("click", openWithdrawalModal);
+  closeWithdrawalModalBtn?.addEventListener("click", closeWithdrawalModal);
+  withdrawalModal?.addEventListener("click", (event) => {
+    if (event.target === withdrawalModal || event.target === withdrawalModal.firstElementChild) {
+      closeWithdrawalModal();
+    }
+  });
+
   submitDepositBtn?.addEventListener("click", async () => {
     const amount = Number(depositAmountInput?.value || 0);
-    if (!amount || amount < 5) {
-      window.showToast("Informe um valor válido (mínimo R$ 5).", "error");
+    if (!amount || amount < 1) {
+      window.showToast("Informe um valor válido (mínimo US$ 1).", "error");
       return;
     }
     submitDepositBtn.disabled = true;
@@ -311,18 +428,22 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amount }),
       });
-      const data = await response.json();
       if (!response.ok) {
-        window.showToast(data.detail || "Erro ao criar depósito.", "error");
+        const message = await window.extractApiErrorMessage(
+          response,
+          "Não conseguimos iniciar seu depósito agora. Tente novamente em instantes."
+        );
+        window.showToast(message, "error");
         return;
       }
+      const data = await response.json();
       if (!data.checkout_url) {
         window.showToast("Gateway não retornou URL de checkout.", "error");
         return;
       }
       window.location.href = data.checkout_url;
     } catch (error) {
-      window.showToast("Falha de conexão ao iniciar depósito.", "error");
+      window.handleNetworkError("Falha de conexão ao iniciar o depósito.");
     } finally {
       submitDepositBtn.disabled = false;
     }
@@ -360,10 +481,10 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        const data = await response.json();
         if (!response.ok) {
           continue;
         }
+        const data = await response.json();
         if (data.credited_now || data.transaction_status === "PAID") {
           creditedAny = true;
         }
@@ -375,7 +496,7 @@
       }
       window.showToast("Nenhum depósito pendente foi conciliado agora.", "error");
     } catch (error) {
-      window.showToast("Falha ao atualizar saldo.", "error");
+      window.handleNetworkError("Falha de conexão ao atualizar seu saldo.");
     } finally {
       refreshBalanceBtn.disabled = false;
       refreshBalanceBtnLabel.textContent = "Atualizar saldo";
@@ -398,15 +519,18 @@
           window.location.href = "/login";
           return;
         }
-        const data = await response.json();
         if (!response.ok) {
-          window.showToast(data.detail || "Erro ao responder.", "error");
+          const message = await window.extractApiErrorMessage(
+            response,
+            "Não foi possível responder a proposta agora. Tente novamente em instantes."
+          );
+          window.showToast(message, "error");
           return;
         }
         window.showToast(action === "ACCEPT" ? "Proposta aceita!" : "Proposta recusada.");
         window.location.reload();
       } catch (error) {
-        window.showToast("Falha de conexão.", "error");
+        window.handleNetworkError("Falha de conexão ao responder proposta.");
       }
     });
   });

@@ -10,8 +10,20 @@ from sqlalchemy.orm import Session, joinedload
 from urllib.parse import quote_plus
 
 from db import get_db
-from models import CallSchedule, Investment, MatchResult, PrizeDistribution, StakeOffer, Tournament, TournamentEscrow, UserDocument, Wallet
+from models import (
+    CallSchedule,
+    Investment,
+    MatchResult,
+    PrizeDistribution,
+    StakeOffer,
+    Tournament,
+    TournamentEscrow,
+    UserDocument,
+    Wallet,
+    WithdrawalRequest,
+)
 from routers.auth import ensure_admin_user, fetch_current_user, get_password_hash, get_wallet_summary, is_strong_password, verify_password
+from services.notifications import create_notification
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -52,6 +64,27 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         .order_by(Tournament.data_hora.asc().nulls_last(), Tournament.id.desc())
     )
     active_tournaments = db.execute(active_tournaments_stmt).scalars().all()
+    active_ids = [item.id for item in active_tournaments]
+
+    supporters_by_tournament: dict[int, list[dict]] = {}
+    if active_ids:
+        active_investment_stmt = (
+            select(Investment)
+            .join(StakeOffer, Investment.offer_id == StakeOffer.id)
+            .where(StakeOffer.tournament_id.in_(active_ids))
+            .options(joinedload(Investment.backer), joinedload(Investment.offer))
+            .order_by(StakeOffer.tournament_id.asc(), Investment.id.asc())
+        )
+        for inv in db.execute(active_investment_stmt).scalars().all():
+            if not inv.offer:
+                continue
+            supporters_by_tournament.setdefault(inv.offer.tournament_id, []).append(
+                {
+                    "name": inv.backer.nome if inv.backer else f"Usuário #{inv.backer_id}",
+                    "pct": Decimal(str(inv.pct_comprada or 0)),
+                    "amount": Decimal(str(inv.valor_investido or 0)),
+                }
+            )
 
     finalized_tournaments_stmt = (
         select(Tournament)
@@ -93,6 +126,12 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
     password_error = request.query_params.get("pwd_error")
     password_success = request.query_params.get("pwd_success")
+    withdrawal_requests = db.execute(
+        select(WithdrawalRequest)
+        .options(joinedload(WithdrawalRequest.user), joinedload(WithdrawalRequest.reviewed_by_user))
+        .order_by(WithdrawalRequest.created_at.desc(), WithdrawalRequest.id.desc())
+        .limit(40)
+    ).scalars().all()
 
     return templates.TemplateResponse(
         "admin_dashboard.html",
@@ -103,13 +142,107 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "pending_docs": pending_docs,
             "reviewed_docs": reviewed_docs,
             "active_tournaments": active_tournaments,
+            "supporters_by_tournament": supporters_by_tournament,
             "finalized_tournaments": finalized_tournaments,
             "settlement_rows_by_tournament": settlement_rows_by_tournament,
+            "withdrawal_requests": withdrawal_requests,
             "password_error": password_error,
             "password_success": password_success,
             "requires_auth": True,
         },
     )
+
+
+@router.post("/admin/withdrawals/{withdrawal_id}/approve")
+def approve_withdrawal(
+    withdrawal_id: int,
+    request: Request,
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+
+    with db.begin():
+        wr = db.execute(
+            select(WithdrawalRequest)
+            .where(WithdrawalRequest.id == withdrawal_id)
+            .with_for_update()
+        ).scalars().first()
+        if not wr:
+            raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
+        if wr.status != "PENDING":
+            raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
+
+        wallet = get_wallet_for_update(db, wr.user_id)
+        amount = q_money(Decimal(str(wr.amount or 0)))
+        saldo_disp = q_money(Decimal(str(wallet.saldo_disponivel or 0)))
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Valor de saque inválido na solicitação.")
+        if saldo_disp < amount:
+            raise HTTPException(status_code=400, detail="O usuário não possui saldo suficiente para aprovar este saque.")
+
+        wallet.saldo_disponivel = q_money(saldo_disp - amount)
+        wr.status = "APPROVED"
+        wr.admin_note = note.strip()[:255] if note else None
+        wr.reviewed_by = user.id
+        wr.reviewed_at = datetime.now(timezone.utc)
+
+        create_notification(
+            db,
+            user_id=wr.user_id,
+            n_type="WITHDRAWAL_APPROVED",
+            title="Saque aprovado",
+            message=f"Sua solicitação de saque de US$ {amount:.2f} foi aprovada.",
+            action_url="/dashboard",
+        )
+
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
+
+
+@router.post("/admin/withdrawals/{withdrawal_id}/reject")
+def reject_withdrawal(
+    withdrawal_id: int,
+    request: Request,
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+
+    with db.begin():
+        wr = db.execute(
+            select(WithdrawalRequest)
+            .where(WithdrawalRequest.id == withdrawal_id)
+            .with_for_update()
+        ).scalars().first()
+        if not wr:
+            raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
+        if wr.status != "PENDING":
+            raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
+
+        wr.status = "REJECTED"
+        wr.admin_note = note.strip()[:255] if note else None
+        wr.reviewed_by = user.id
+        wr.reviewed_at = datetime.now(timezone.utc)
+
+        create_notification(
+            db,
+            user_id=wr.user_id,
+            n_type="WITHDRAWAL_REJECTED",
+            title="Saque rejeitado",
+            message=(
+                "Sua solicitação de saque foi rejeitada."
+                + (f" Motivo: {wr.admin_note}" if wr.admin_note else "")
+            ),
+            action_url="/dashboard",
+        )
+
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
 @router.post("/admin/password/update")
@@ -163,7 +296,7 @@ def create_admin_tournament_offer(
         markup_value = Decimal(str(markup))
         total_pct_value = Decimal(str(total_pct))
     except InvalidOperation:
-        raise HTTPException(status_code=400, detail="Dados inválidos para criar torneio.")
+        raise HTTPException(status_code=400, detail="Dados inválidos para criar torneio. Revise os campos.")
 
     if buyin_value <= 0:
         raise HTTPException(status_code=400, detail="Buy-in deve ser maior que zero.")
@@ -180,7 +313,7 @@ def create_admin_tournament_offer(
                 local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
             data_hora = local_dt
         except ValueError:
-            raise HTTPException(status_code=400, detail="Data/hora inválida.")
+            raise HTTPException(status_code=400, detail="Data/hora inválida. Use uma data no formato correto.")
 
     tournament = Tournament(
         nome=tournament_name.strip(),
@@ -230,12 +363,12 @@ async def close_tournament(tournament_id: int, request: Request, db: Session = D
     payload = await request.json()
     prize_raw = payload.get("prize_amount")
     if prize_raw is None:
-        raise HTTPException(status_code=400, detail="Campo prize_amount é obrigatório.")
+        raise HTTPException(status_code=400, detail="Informe o valor do prêmio para encerrar o torneio.")
 
     try:
         prize_amount = q_money(Decimal(str(prize_raw)))
     except InvalidOperation:
-        raise HTTPException(status_code=400, detail="Valor de prêmio inválido.")
+        raise HTTPException(status_code=400, detail="Valor de prêmio inválido. Use apenas números.")
     if prize_amount < 0:
         raise HTTPException(status_code=400, detail="Valor de prêmio não pode ser negativo.")
 
@@ -284,7 +417,7 @@ def mark_investment_paid(investment_id: int, request: Request, db: Session = Dep
     stmt = select(Investment).where(Investment.id == investment_id).with_for_update()
     investment = db.execute(stmt).scalars().first()
     if not investment:
-        raise HTTPException(status_code=404, detail="Investment não encontrado.")
+        raise HTTPException(status_code=404, detail="Investimento não encontrado.")
     investment.payout_status = "PAID"
     db.commit()
 
@@ -395,7 +528,7 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
         if not result:
             raise HTTPException(status_code=404, detail="Resultado não encontrado.")
         if result.review_status != "PENDING":
-            raise HTTPException(status_code=400, detail="Resultado já foi revisado.")
+            raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
 
         total_sent = q_money(Decimal(str(result.valor_enviado)))
         if total_sent < 0:
@@ -412,6 +545,7 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
 
         backer_gross_total = Decimal("0")
         fee_total = Decimal("0")
+        total_invested = Decimal("0")
         for inv in investments:
             pct = Decimal(str(inv.pct_comprada or 0))
             invested_amount = q_money(Decimal(str(inv.valor_investido or 0)))
@@ -443,6 +577,7 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
             )
             backer_gross_total += gross_amount
             fee_total += platform_fee
+            total_invested += invested_amount
 
         backer_gross_total = q_money(backer_gross_total)
         fee_total = q_money(fee_total)
@@ -454,6 +589,8 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
 
         player_amount = q_money(total_sent - backer_gross_total)
         player_wallet = get_wallet_for_update(db, result.player_id)
+        player_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0))
+        player_wallet.saldo_em_jogo = q_money(max(Decimal("0"), player_em_jogo - q_money(total_invested)))
         player_wallet.saldo_disponivel = q_money(Decimal(str(player_wallet.saldo_disponivel)) + player_amount)
 
         db.add(
@@ -488,6 +625,17 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
         result.rejection_reason = None
         result.reviewed_by = user.id
         result.reviewed_at = datetime.now(timezone.utc)
+        create_notification(
+            db,
+            user_id=result.player_id,
+            n_type="RESULT_APPROVED",
+            title="Resultado aprovado",
+            message=(
+                f"Seu resultado do torneio #{result.tournament_id} foi aprovado. "
+                f"Distribuição financeira concluída."
+            ),
+            action_url="/dashboard",
+        )
 
     return RedirectResponse(url="/admin/results", status_code=303)
 
@@ -507,12 +655,23 @@ def reject_result(
     result = db.execute(stmt).scalars().first()
     if result:
         if result.review_status != "PENDING":
-            raise HTTPException(status_code=400, detail="Resultado já foi revisado.")
+            raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
         result.review_status = "REJECTED"
         result.admin_verified = False
         result.rejection_reason = reason.strip()[:255] if reason else None
         result.reviewed_by = user.id
         result.reviewed_at = datetime.now(timezone.utc)
+        create_notification(
+            db,
+            user_id=result.player_id,
+            n_type="RESULT_REJECTED",
+            title="Resultado rejeitado",
+            message=(
+                f"Seu resultado do torneio #{result.tournament_id} foi rejeitado."
+                + (f" Motivo: {result.rejection_reason}" if result.rejection_reason else "")
+            ),
+            action_url="/player/results/new",
+        )
         db.commit()
     return RedirectResponse(url="/admin/results", status_code=303)
 

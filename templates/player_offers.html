@@ -4,6 +4,16 @@
 
 {% block content %}
 <section class="space-y-10">
+  {% if request.query_params.get("playing") == "1" %}
+  <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    Escrow liberado para o jogador e torneio marcado como "Jogando".
+  </div>
+  {% endif %}
+  {% if request.query_params.get("declined") == "1" %}
+  <div class="border border-amber-500/40 text-amber-300 bg-amber-500/10 px-4 py-3 rounded-xl text-sm">
+    Você informou que não vai jogar. Os aportes foram estornados aos apoiadores.
+  </div>
+  {% endif %}
   <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
     <div class="space-y-2">
       <img
@@ -12,7 +22,7 @@
         class="h-6"
       />
       <h1 class="font-title text-3xl uppercase">Criar nova oferta</h1>
-      <p class="text-gray-300">Publique seus torneios e defina o markup.</p>
+      <p class="text-gray-300">Publique seus torneios em USD e defina o markup.</p>
     </div>
   </div>
 
@@ -40,7 +50,7 @@
       />
     </div>
     <div class="space-y-2">
-      <label class="text-xs text-gray-400">Buy-in (R$)</label>
+      <label class="text-xs text-gray-400">Buy-in (US$)</label>
       <input
         name="buyin"
         type="number"
@@ -101,12 +111,64 @@
         <p class="text-sm text-gray-400">{{ offer.tournament.sharkscope_id or "Sala não informada" }}</p>
         <p class="text-lg font-semibold">{{ offer.tournament.nome }}</p>
         <p class="text-xs text-gray-400">
-          Buy-in <span class="font-mono text-white">R$ {{ "%.2f"|format(offer.tournament.buyin) }}</span>
+          Buy-in <span class="font-mono text-white">US$ {{ "%.2f"|format(offer.tournament.buyin) }}</span>
         </p>
         <div class="flex items-center justify-between text-xs text-gray-400">
           <span>Markup {{ offer.markup }}</span>
           <span class="font-mono text-emerald-400">{{ offer.vendido_pct }}% vendido</span>
         </div>
+        <p class="text-xs text-gray-500">
+          Escrow: <span class="font-mono">{{ offer.escrow_status }}</span> ·
+          Torneio: <span class="font-mono">{{ offer.tournament.status }}</span>
+        </p>
+        <div class="text-xs text-gray-400 space-y-1">
+          <p class="text-gray-500">Apoiadores nesta oferta:</p>
+          {% if offer.investments %}
+            {% for inv in offer.investments %}
+            <p>
+              {{ inv.backer.nome if inv.backer else ("Usuário #" ~ inv.backer_id) }}
+              · {{ "%.2f"|format(inv.pct_comprada) }}%
+              · US$ {{ "%.2f"|format(inv.valor_investido) }}
+            </p>
+            {% endfor %}
+          {% else %}
+          <p>Sem aportes ainda.</p>
+          {% endif %}
+        </div>
+        {% if not offer.investments %}
+        <details class="pt-2 border-t border-white/10">
+          <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar oferta</summary>
+          <form action="/player/offers/{{ offer.id }}/update" method="post" class="grid gap-2 mt-2">
+            <input name="tournament_name" value="{{ offer.tournament.nome }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <input name="room" value="{{ offer.tournament.plataforma }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <input name="buyin" type="number" step="0.01" min="0.01" value="{{ offer.tournament.buyin }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <input name="start_time" type="datetime-local" value="{{ offer.tournament.data_hora.strftime('%Y-%m-%dT%H:%M') if offer.tournament.data_hora else '' }}" class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <input name="markup" type="number" step="0.01" min="0.01" value="{{ offer.markup }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <input name="total_pct" type="number" step="0.01" min="1" max="100" value="{{ offer.total_disponivel_pct }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">Salvar edição</button>
+          </form>
+        </details>
+        {% endif %}
+        {% if offer.investments and offer.escrow_status == "COMPLETE" and offer.tournament.status == "Aberto" %}
+        <div class="pt-2 border-t border-white/10 grid gap-2">
+          <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
+            <button
+              type="submit"
+              class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold"
+            >
+              Confirmar que vai jogar (liberar escrow)
+            </button>
+          </form>
+          <form method="post" action="/player/offers/{{ offer.id }}/decline-play">
+            <button
+              type="submit"
+              class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-sm"
+            >
+              Informar que não vai jogar (estornar apoiadores)
+            </button>
+          </form>
+        </div>
+        {% endif %}
       </div>
       {% endfor %}
     </div>

@@ -20,12 +20,14 @@ from services.mercadopago_service import (
     get_mp_payment,
     search_mp_payment_by_external_reference,
 )
+from services.ptax import get_usd_brl_ptax_rate
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-MIN_DEPOSIT_AMOUNT = Decimal("5.00")
-MAX_DEPOSIT_AMOUNT = Decimal("50000.00")
+MONEY_Q = Decimal("0.01")
+MIN_DEPOSIT_AMOUNT_USD = Decimal("1.00")
+MAX_DEPOSIT_AMOUNT_USD = Decimal("10000.00")
 
 
 def ensure_wallet_for_user(db: Session, user_id: int, with_lock: bool = False) -> Wallet:
@@ -236,18 +238,18 @@ def _extract_webhook_order_nsu(payload: dict[str, Any]) -> str | None:
 def _extract_and_validate_amount(payload: dict[str, Any]) -> Decimal:
     amount_raw = payload.get("amount")
     if amount_raw is None:
-        raise HTTPException(status_code=400, detail="Campo amount é obrigatório.")
+        raise HTTPException(status_code=400, detail="Informe o valor do depósito para continuar.")
 
     try:
         amount = Decimal(str(amount_raw))
     except InvalidOperation:
-        raise HTTPException(status_code=400, detail="Valor de depósito inválido.")
+        raise HTTPException(status_code=400, detail="Valor de depósito inválido. Use apenas números.")
     if amount <= 0:
-        raise HTTPException(status_code=400, detail="Valor deve ser maior que zero.")
-    if amount < MIN_DEPOSIT_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Depósito mínimo é R$ {MIN_DEPOSIT_AMOUNT}.")
-    if amount > MAX_DEPOSIT_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Depósito máximo é R$ {MAX_DEPOSIT_AMOUNT}.")
+        raise HTTPException(status_code=400, detail="O valor de depósito deve ser maior que zero.")
+    if amount < MIN_DEPOSIT_AMOUNT_USD:
+        raise HTTPException(status_code=400, detail=f"Depósito mínimo é US$ {MIN_DEPOSIT_AMOUNT_USD}.")
+    if amount > MAX_DEPOSIT_AMOUNT_USD:
+        raise HTTPException(status_code=400, detail=f"Depósito máximo é US$ {MAX_DEPOSIT_AMOUNT_USD}.")
     return amount
 
 
@@ -263,6 +265,16 @@ def _create_pending_tx(db: Session, user_id: int, amount: Decimal) -> str:
     ensure_wallet_for_user(db, user_id, with_lock=False)
     db.commit()
     return txid
+
+
+def _q_money(value: Decimal) -> Decimal:
+    return Decimal(value).quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
+async def _convert_usd_to_brl(amount_usd: Decimal) -> tuple[Decimal, Decimal]:
+    rate = await get_usd_brl_ptax_rate()
+    amount_brl = _q_money(amount_usd * rate)
+    return amount_brl, rate
 
 
 def _resolve_base_url(request: Request) -> str:
@@ -285,39 +297,47 @@ def _credit_tx_wallet_if_needed(db: Session, tx: PixTransaction) -> bool:
 async def deposit_infinitepay(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
-        raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
+        raise HTTPException(status_code=401, detail="Faça login para realizar seu depósito.")
     ensure_user_not_blocked(user)
 
     payload = await request.json()
-    amount = _extract_and_validate_amount(payload)
-    txid = _create_pending_tx(db, user.id, amount)
+    amount_usd = _extract_and_validate_amount(payload)
+    txid = _create_pending_tx(db, user.id, amount_usd)
     base_url = _resolve_base_url(request)
+    amount_brl, ptax_rate = await _convert_usd_to_brl(amount_usd)
 
     try:
         redirect_url = f"{base_url}/dashboard?payment=success"
         webhook_url = f"{base_url}/webhooks/infinitepay"
         checkout_url = await generate_checkout_link(
-            amount_brl=float(amount),
+            amount_brl=float(amount_brl),
             order_nsu=txid,
             redirect_url=redirect_url,
             webhook_url=webhook_url,
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout na InfinitePay: {exc}") from exc
-    return {"checkout_url": checkout_url, "gateway": "infinitepay"}
+    return {
+        "checkout_url": checkout_url,
+        "gateway": "infinitepay",
+        "amount_usd": float(amount_usd),
+        "amount_brl": float(amount_brl),
+        "ptax_rate": float(ptax_rate),
+    }
 
 
 @router.post("/api/deposit/mercadopago")
 async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
-        raise HTTPException(status_code=401, detail="Faça login para realizar depósito.")
+        raise HTTPException(status_code=401, detail="Faça login para realizar seu depósito.")
     ensure_user_not_blocked(user)
 
     payload = await request.json()
-    amount = _extract_and_validate_amount(payload)
-    txid = _create_pending_tx(db, user.id, amount)
+    amount_usd = _extract_and_validate_amount(payload)
+    txid = _create_pending_tx(db, user.id, amount_usd)
     base_url = _resolve_base_url(request)
+    amount_brl, ptax_rate = await _convert_usd_to_brl(amount_usd)
     if not base_url.lower().startswith("https://"):
         logger.error("MP deposit blocked: invalid public base URL '%s'", base_url)
         raise HTTPException(
@@ -328,12 +348,12 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
         "MP deposit started: user_id=%s txid=%s amount=%s base_url=%s",
         user.id,
         txid,
-        amount,
+        amount_usd,
         base_url,
     )
     try:
         checkout_url = await create_mp_preference(
-            amount_brl=float(amount),
+            amount_brl=float(amount_brl),
             txid=txid,
             base_url=base_url,
         )
@@ -341,7 +361,13 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
     except Exception as exc:
         logger.exception("MP preference create failed: user_id=%s txid=%s", user.id, txid)
         raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout no Mercado Pago: {exc}") from exc
-    return {"checkout_url": checkout_url, "gateway": "mercadopago"}
+    return {
+        "checkout_url": checkout_url,
+        "gateway": "mercadopago",
+        "amount_usd": float(amount_usd),
+        "amount_brl": float(amount_brl),
+        "ptax_rate": float(ptax_rate),
+    }
 
 
 @router.post("/webhooks/infinitepay")
@@ -446,7 +472,7 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
 async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
-        raise HTTPException(status_code=401, detail="Faça login para reconciliar o depósito.")
+        raise HTTPException(status_code=401, detail="Faça login para atualizar o status do depósito.")
     ensure_user_not_blocked(user)
 
     try:
@@ -457,7 +483,7 @@ async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(
     payment_id = str(payload.get("payment_id") or "").strip()
     provided_txid = str(payload.get("txid") or payload.get("external_reference") or "").strip()
     if not payment_id and not provided_txid:
-        raise HTTPException(status_code=400, detail="Informe payment_id ou txid para reconciliar.")
+        raise HTTPException(status_code=400, detail="Informe payment_id ou txid para atualizar o depósito.")
 
     if not payment_id and provided_txid:
         payment_match = await search_mp_payment_by_external_reference(provided_txid)
@@ -482,17 +508,17 @@ async def reconcile_mercadopago_payment(request: Request, db: Session = Depends(
     if not txid:
         txid = provided_txid
     if not txid:
-        raise HTTPException(status_code=400, detail="Não foi possível obter txid/external_reference do pagamento.")
+        raise HTTPException(status_code=400, detail="Não foi possível identificar o pagamento (txid/external_reference).")
     if provided_txid and txid != provided_txid:
-        raise HTTPException(status_code=400, detail="txid informado não corresponde ao external_reference do pagamento.")
+        raise HTTPException(status_code=400, detail="O txid informado não corresponde ao pagamento consultado.")
 
     try:
         tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
         tx = db.execute(tx_stmt).scalars().first()
         if not tx:
-            raise HTTPException(status_code=404, detail="Transação não encontrada para o txid informado.")
+            raise HTTPException(status_code=404, detail="Não encontramos uma transação local para o txid informado.")
         if user.tipo != "admin" and tx.user_id != user.id:
-            raise HTTPException(status_code=403, detail="Você não tem permissão para reconciliar esta transação.")
+            raise HTTPException(status_code=403, detail="Você não tem permissão para atualizar esta transação.")
 
         credited = _credit_tx_wallet_if_needed(db, tx)
         db.commit()

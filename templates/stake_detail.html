@@ -33,22 +33,26 @@
         Sala: <span class="text-white">{{ offer.room if offer else 'PokerStars' }}</span> ·
         Buy-in:
         <span class="font-mono text-emerald-400">
-          R$ {{ "%.2f"|format(offer.buyin) if offer else "215.00" }}
+          US$ {{ "%.2f"|format(offer.buyin) if offer else "215.00" }}
         </span>
       </p>
     </div>
 
     <div class="space-y-2">
       <div class="flex items-center justify-between text-xs text-gray-400">
-        <span>Progresso vendido</span>
-        <span class="font-mono text-emerald-400">{{ offer.sold_pct if offer else 0 }}%</span>
+        <span>Progresso vendido (sobre meta)</span>
+        <span class="font-mono text-emerald-400">{{ "%.2f"|format(offer.progress_sale_pct if offer else 0) }}%</span>
       </div>
       <div class="w-full h-2 bg-white/10 rounded-full">
         <div
           class="h-2 rounded-full bg-emerald-400"
-          style="width: {{ offer.sold_pct if offer else 0 }}%;"
+          style="width: {{ offer.progress_sale_pct if offer else 0 }}%;"
         ></div>
       </div>
+      <p class="text-xs text-gray-500 font-mono">
+        US$ {{ "%.2f"|format(offer.sold_buyin_amount if offer else 0) }} /
+        US$ {{ "%.2f"|format(offer.target_buyin_amount if offer else 0) }}
+      </p>
     </div>
 
       <div class="grid gap-4 md:grid-cols-3">
@@ -138,7 +142,7 @@
       </p>
       <div class="space-y-4">
         <div>
-          <label class="text-xs text-gray-400 block mb-1">Valor (R$)</label>
+          <label class="text-xs text-gray-400 block mb-1">Valor (US$)</label>
           <input
             id="bidAmount"
             type="number"
@@ -200,8 +204,8 @@
   const investmentWarning = document.getElementById("investmentWarning");
 
   const formatPct = (value) => `${value.toFixed(2)}%`;
-  const formatBRL = (value) =>
-    `R$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
+  const formatUSD = (value) =>
+    `US$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
 
   const clampToMax = (value) => {
     if (!Number.isFinite(value)) return 0;
@@ -222,7 +226,7 @@
     if (amount > maxInvestAmount) {
       return {
         valid: false,
-        reason: `Valor acima do máximo disponível para esta oferta (${formatBRL(maxInvestAmount)}).`,
+        reason: `Valor acima do máximo disponível para esta oferta (${formatUSD(maxInvestAmount)}).`,
       };
     }
     return { valid: true, reason: "" };
@@ -256,9 +260,9 @@
   }
   if (investmentMaxHint) {
     if (hasWallet) {
-      investmentMaxHint.textContent = `Máximo permitido agora: ${formatBRL(maxInvestAmount)} (cota: ${formatBRL(maxOfferAmount)} | saldo: ${formatBRL(walletAvailable)}).`;
+      investmentMaxHint.textContent = `Máximo permitido agora: ${formatUSD(maxInvestAmount)} (cota: ${formatUSD(maxOfferAmount)} | saldo: ${formatUSD(walletAvailable)}).`;
     } else {
-      investmentMaxHint.textContent = `Máximo para esta oferta: ${formatBRL(maxInvestAmount)} (${formatPct(availablePct)} disponível).`;
+      investmentMaxHint.textContent = `Máximo para esta oferta: ${formatUSD(maxInvestAmount)} (${formatPct(availablePct)} disponível).`;
     }
   }
 
@@ -268,7 +272,7 @@
     const normalized = clampToMax(amount);
     if (normalized !== amount && input) {
       input.value = normalized.toFixed(2);
-      window.showToast(`Valor ajustado para o máximo permitido (${formatBRL(normalized)}).`, "error");
+      window.showToast(`Valor ajustado para o máximo permitido (${formatUSD(normalized)}).`, "error");
     }
   };
 
@@ -294,7 +298,7 @@
       return;
     }
     if (amount > maxInvestAmount) {
-      window.showToast(`Máximo permitido para esta oferta: ${formatBRL(maxInvestAmount)}.`, "error");
+      window.showToast(`Máximo permitido para esta oferta: ${formatUSD(maxInvestAmount)}.`, "error");
       confirmButton.disabled = true;
       confirmButton.classList.add("opacity-60", "cursor-not-allowed");
       return;
@@ -309,15 +313,18 @@
         window.location.href = "/login";
         return;
       }
-      const data = await response.json();
       if (!response.ok) {
-        window.showToast(data.detail || "Erro ao investir.", "error");
+        const message = await window.extractApiErrorMessage(
+          response,
+          "Não foi possível confirmar seu apoio agora. Tente novamente em instantes."
+        );
+        window.showToast(message, "error");
         return;
       }
       window.showToast("Investimento confirmado!");
       window.location.reload();
     } catch (error) {
-      window.showToast("Falha de conexão.", "error");
+      window.handleNetworkError("Falha de conexão ao confirmar o apoio.");
     }
   });
 
@@ -378,16 +385,19 @@
         window.location.href = "/login";
         return;
       }
-      const data = await response.json();
       if (!response.ok) {
-        window.showToast(data.detail || "Erro ao enviar proposta.", "error");
+        const message = await window.extractApiErrorMessage(
+          response,
+          "Não foi possível enviar sua proposta agora. Tente novamente em instantes."
+        );
+        window.showToast(message, "error");
         return;
       }
       window.showToast("Proposta enviada! Aguarde a resposta do jogador.");
       closeBidModal();
       window.location.reload();
     } catch (error) {
-      window.showToast("Falha de conexão.", "error");
+      window.handleNetworkError("Falha de conexão ao enviar proposta personalizada.");
     }
   });
 </script>

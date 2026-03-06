@@ -64,7 +64,7 @@
         <h3 class="text-lg font-semibold">{{ offer.tournament_name }}</h3>
         <p class="text-sm text-gray-400">
           Buy-in
-          <span class="font-mono text-white">R$ {{ "%.2f"|format(offer.buyin) }}</span>
+          <span class="font-mono text-white">US$ {{ "%.2f"|format(offer.buyin) }}</span>
           · Início
           <span class="font-mono text-white">
             {{ offer.start_time.strftime("%H:%M") if offer.start_time else "A definir" }}
@@ -74,15 +74,18 @@
 
       <div class="space-y-2">
         <div class="flex items-center justify-between text-xs text-gray-400">
-          <span>Vendido</span>
-          <span class="font-mono text-emerald-400">{{ offer.sold_pct }}%</span>
+          <span>Vendido (sobre meta)</span>
+          <span class="font-mono text-emerald-400">{{ "%.2f"|format(offer.progress_sale_pct) }}%</span>
         </div>
         <div class="w-full h-2 bg-white/10 rounded-full">
           <div
             class="h-2 rounded-full bg-emerald-400"
-            style="width: {{ offer.sold_pct }}%;"
+            style="width: {{ offer.progress_sale_pct }}%;"
           ></div>
         </div>
+        <p class="text-xs text-gray-500 font-mono">
+          US$ {{ "%.2f"|format(offer.sold_buyin_amount) }} / US$ {{ "%.2f"|format(offer.target_buyin_amount) }}
+        </p>
       </div>
 
       <div class="flex items-center justify-between">

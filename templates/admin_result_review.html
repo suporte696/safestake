@@ -47,11 +47,11 @@
         <div class="grid md:grid-cols-2 gap-4 text-sm">
           <div class="border border-white/10 rounded-xl p-4">
             <p class="text-gray-400">Valor prêmio</p>
-            <p class="font-mono text-lg">R$ {{ "%.2f"|format(result.valor_premio) }}</p>
+            <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_premio) }}</p>
           </div>
           <div class="border border-white/10 rounded-xl p-4">
             <p class="text-gray-400">Valor enviado para distribuição</p>
-            <p class="font-mono text-lg">R$ {{ "%.2f"|format(result.valor_enviado) }}</p>
+            <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_enviado) }}</p>
           </div>
         </div>
 
@@ -111,9 +111,9 @@
           {% for item in items %}
           <div class="border border-white/10 rounded-lg px-3 py-2">
             <p class="text-gray-400">{{ item.recipient_type }}</p>
-            <p class="font-mono">Líquido R$ {{ "%.2f"|format(item.net_amount) }}</p>
+            <p class="font-mono">Líquido US$ {{ "%.2f"|format(item.net_amount) }}</p>
             {% if item.platform_fee and item.platform_fee > 0 %}
-            <p class="text-gray-500">Fee R$ {{ "%.2f"|format(item.platform_fee) }}</p>
+            <p class="text-gray-500">Fee US$ {{ "%.2f"|format(item.platform_fee) }}</p>
             {% endif %}
           </div>
           {% endfor %}
