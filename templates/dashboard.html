@@ -45,27 +45,42 @@
     </div>
   </div>
 
-  <div class="grid gap-6 md:grid-cols-3">
+  <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
     <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Total Investido</p>
+      <p class="text-xs text-gray-400">Saldo atual da carteira</p>
+      <p class="text-3xl font-mono text-emerald-400 mt-2">
+        US$ {{ "%.2f"|format(wallet.saldo_disponivel if wallet else 0) }}
+      </p>
+    </div>
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <p class="text-xs text-gray-400">Saldo pendente</p>
+      <p class="text-3xl font-mono text-amber-400 mt-2">
+        US$ {{ "%.2f"|format(saldo_pendente) }}
+      </p>
+    </div>
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <p class="text-xs text-gray-400">Total investido</p>
       <p class="text-3xl font-mono text-emerald-400 mt-2">
         US$ {{ "%.2f"|format(total_investido) }}
       </p>
     </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Total Recebido (Histórico)</p>
+      <p class="text-xs text-gray-400">Total recebido</p>
       <p class="text-3xl font-mono text-white mt-2">
         US$ {{ "%.2f"|format(total_recebido) }}
       </p>
     </div>
-    <div class="bg-black border border-white/10 rounded-2xl p-6">
-      <p class="text-xs text-gray-400">Saldo Atual da Carteira</p>
-      <p class="text-3xl font-mono text-emerald-400 mt-2">
-        US$ {{ "%.2f"|format(wallet.saldo_disponivel if wallet else 0) }}
-      </p>
-    </div>
   </div>
 
+  {% if user.tipo == "apoiador" %}
+  <nav class="flex gap-2 border-b border-white/10 pb-2" aria-label="Abas do painel">
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition bg-emerald-400/20 text-emerald-400 border border-b-0 border-emerald-400/50" data-tab="inicio">Início</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="historico">Histórico de Stakes</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="propostas">Minhas Propostas</button>
+  </nav>
+  {% endif %}
+
+  <div id="tab-inicio" class="dashboard-tab-panel space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
       <h2 class="font-title text-xl uppercase">Depósitos (crédito em USD via PTAX)</h2>
@@ -216,90 +231,58 @@
     {% endif %}
   </div>
   {% endif %}
+  </div>
+
+  <div id="tab-historico" class="dashboard-tab-panel space-y-8 {{ 'hidden' if user.tipo == 'apoiador' else '' }}">
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-title text-xl uppercase">Histórico de Stakes</h2>
+        <span class="text-xs text-gray-400">Últimas 10 operações</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-300">
+          <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+            <tr>
+              <th class="py-3">Torneio</th>
+              <th class="py-3">Player</th>
+              <th class="py-3">Investimento</th>
+              <th class="py-3">Cota</th>
+              <th class="py-3">Resultado</th>
+              <th class="py-3">Status</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            {% for stake in stakes %}
+            <tr class="hover:bg-white/5">
+              <td class="py-3">{{ stake.tournament }}</td>
+              <td class="py-3">{{ stake.player }}</td>
+              <td class="py-3 font-mono">US$ {{ "%.2f"|format(stake.valor) }}</td>
+              <td class="py-3 font-mono">{{ stake.pct }}%</td>
+              <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(stake.resultado) }}</td>
+              <td class="py-3">
+                <span
+                  class="px-3 py-1 rounded-full text-xs border border-white/10 {% if stake.status == 'Jogando' %}text-emerald-400{% else %}text-gray-300{% endif %}"
+                >
+                  {{ stake.status }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 
   {% if user.tipo == "apoiador" %}
-  <div class="bg-black border border-white/10 rounded-2xl p-6">
-    <h2 class="font-title text-xl uppercase text-emerald-400 mb-4">Minhas propostas</h2>
-    <p class="text-sm text-gray-400 mb-4">Status das suas ofertas personalizadas (Bids).</p>
-    {% if my_bids %}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-300">
-        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-          <tr>
-            <th class="py-3">Torneio</th>
-            <th class="py-3">Valor</th>
-            <th class="py-3">Markup</th>
-            <th class="py-3">Data</th>
-            <th class="py-3">Status</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          {% for bid in my_bids %}
-          <tr class="hover:bg-white/5">
-            <td class="py-3">{{ bid.tournament_name }}</td>
-            <td class="py-3 font-mono">US$ {{ "%.2f"|format(bid.amount) }}</td>
-            <td class="py-3 font-mono">{{ bid.proposed_markup }}</td>
-            <td class="py-3 text-gray-400">{{ bid.created_at.strftime("%d/%m %H:%M") if bid.created_at else "-" }}</td>
-            <td class="py-3">
-              {% if bid.status == "PENDING" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
-              {% elif bid.status == "ACCEPTED" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aceito</span>
-              {% elif bid.status == "REJECTED" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Recusado</span>
-              {% else %}
-              <span class="px-3 py-1 rounded-full text-xs border border-white/10 text-gray-400">{{ bid.status }}</span>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+  <div id="tab-propostas" class="dashboard-tab-panel hidden space-y-8">
+    <div class="bg-black border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center py-12 text-center">
+      <span class="text-4xl mb-3 opacity-80">🔒</span>
+      <h2 class="font-title text-xl uppercase text-gray-400 mb-2">Minhas Propostas</h2>
+      <p class="text-gray-500">Em breve.</p>
     </div>
-    {% else %}
-    <p class="text-gray-500 py-4">Você ainda não enviou nenhuma proposta. Use "Fazer oferta personalizada (Bid)" na página de uma oferta.</p>
-    {% endif %}
   </div>
   {% endif %}
-
-  <div class="bg-black border border-white/10 rounded-2xl p-6">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="font-title text-xl uppercase">Histórico de Stakes</h2>
-      <span class="text-xs text-gray-400">Últimas 10 operações</span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-300">
-        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-          <tr>
-            <th class="py-3">Torneio</th>
-            <th class="py-3">Player</th>
-            <th class="py-3">Investimento</th>
-            <th class="py-3">Cota</th>
-            <th class="py-3">Resultado</th>
-            <th class="py-3">Status</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          {% for stake in stakes %}
-          <tr class="hover:bg-white/5">
-            <td class="py-3">{{ stake.tournament }}</td>
-            <td class="py-3">{{ stake.player }}</td>
-            <td class="py-3 font-mono">US$ {{ "%.2f"|format(stake.valor) }}</td>
-            <td class="py-3 font-mono">{{ stake.pct }}%</td>
-            <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(stake.resultado) }}</td>
-            <td class="py-3">
-              <span
-                class="px-3 py-1 rounded-full text-xs border border-white/10 {% if stake.status == 'Jogando' %}text-emerald-400{% else %}text-gray-300{% endif %}"
-              >
-                {{ stake.status }}
-              </span>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
 </section>
 
 <div id="depositModal" class="fixed inset-0 z-50 hidden">
@@ -353,11 +336,24 @@
         />
       </div>
       <div class="space-y-2">
+        <label class="text-xs text-gray-400">Tipo de chave PIX</label>
+        <select id="withdraw_pix_type" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400">
+          <option value="cpf">CPF</option>
+          <option value="email">E-mail</option>
+          <option value="telefone">Telefone</option>
+        </select>
+      </div>
+      <div class="space-y-2">
         <label class="text-xs text-gray-400">Chave PIX de destino</label>
         <input
+          type="text"
+          id="withdraw_pix_key"
           name="pix_key"
           value="{{ user.pix_key or '' }}"
+          placeholder="CPF, e-mail ou celular"
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+          required
+          autocomplete="off"
         />
       </div>
       <button
@@ -413,6 +409,22 @@
     if (event.target === withdrawalModal || event.target === withdrawalModal.firstElementChild) {
       closeWithdrawalModal();
     }
+  });
+
+  document.querySelectorAll(".dashboard-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.getAttribute("data-tab");
+      if (!tab) return;
+      document.querySelectorAll(".dashboard-tab").forEach((b) => {
+        b.classList.remove("bg-emerald-400/20", "text-emerald-400", "border-emerald-400/50", "border-b-0");
+        b.classList.add("text-gray-400", "border-transparent");
+      });
+      btn.classList.remove("text-gray-400", "border-transparent");
+      btn.classList.add("bg-emerald-400/20", "text-emerald-400", "border", "border-b-0", "border-emerald-400/50");
+      document.querySelectorAll(".dashboard-tab-panel").forEach((panel) => panel.classList.add("hidden"));
+      const panel = document.getElementById("tab-" + tab);
+      if (panel) panel.classList.remove("hidden");
+    });
   });
 
   submitDepositBtn?.addEventListener("click", async () => {
@@ -534,5 +546,36 @@
       }
     });
   });
+
+  (function () {
+    const typeSelect = document.getElementById("withdraw_pix_type");
+    const input = document.getElementById("withdraw_pix_key");
+    if (!typeSelect || !input) return;
+    function maskPix(value, type) {
+      const digits = value.replace(/\D/g, "");
+      if (type === "cpf") {
+        return digits.slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+      }
+      if (type === "telefone") {
+        if (digits.length <= 2) return digits.replace(/(\d{0,2})/, "($1");
+        if (digits.length <= 7) return digits.replace(/(\d{2})(\d{0,5})/, "($1) $2");
+        return digits.slice(0, 11).replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
+      }
+      return value;
+    }
+    function applyMask() {
+      const type = typeSelect.value;
+      const start = input.selectionStart;
+      const oldLen = input.value.length;
+      input.value = maskPix(input.value, type);
+      if (type === "cpf") input.setAttribute("maxlength", "14");
+      else if (type === "telefone") input.setAttribute("maxlength", "15");
+      else input.removeAttribute("maxlength");
+      const newLen = input.value.length;
+      input.setSelectionRange(Math.max(0, start + (newLen - oldLen)), Math.max(0, start + (newLen - oldLen)));
+    }
+    typeSelect.addEventListener("change", () => { input.value = input.value || ""; input.placeholder = typeSelect.value === "cpf" ? "000.000.000-00" : typeSelect.value === "telefone" ? "(00) 00000-0000" : "seu@email.com"; applyMask(); });
+    input.addEventListener("input", applyMask);
+  })();
 </script>
 {% endblock %}

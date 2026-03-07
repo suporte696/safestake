@@ -29,7 +29,7 @@
       }
     </style>
   </head>
-  <body class="bg-[#050505] text-white font-body min-h-screen">
+  <body class="bg-[#050505] text-white font-body min-h-screen flex flex-col">
     <header class="border-b border-white/10">
       <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
         <div class="flex items-center gap-3">
@@ -40,16 +40,42 @@
           />
         </div>
 
-        <nav class="hidden md:flex items-center gap-8 text-sm text-gray-300">
+        <nav class="hidden md:flex items-center gap-6 text-sm text-gray-300">
+          {% if user and user.tipo == "admin" %}
+          <div class="flex items-center gap-3 mr-2 pl-4 border-l border-white/10">
+            <span class="text-xs uppercase tracking-widest text-gray-500 font-title">Ver como</span>
+            <div class="flex rounded-xl bg-black/40 border border-emerald-400/30 p-1 ring-1 ring-white/5">
+              <a
+                href="/admin/dashboard"
+                class="admin-context-link px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black shadow-lg shadow-emerald-400/30{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
+              >
+                Admin
+              </a>
+              <a
+                href="/player/offers"
+                class="admin-context-link px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black shadow-lg shadow-emerald-400/30{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
+              >
+                Jogador
+              </a>
+            </div>
+          </div>
           <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
-          <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
-          {% if user and user.tipo == "jogador" %}
+          {% if request.url.path.startswith('/admin') %}
+          <a class="hover:text-emerald-400 transition" href="/admin/dashboard">Painel Admin</a>
+          <a class="hover:text-emerald-400 transition" href="/admin/results">Resultados</a>
+          {% else %}
           <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
           <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
           {% endif %}
-          {% if user and user.tipo == "admin" %}
-          <a class="hover:text-emerald-400 transition" href="/admin/dashboard">Painel Admin</a>
-          <a class="hover:text-emerald-400 transition" href="/admin/results">Resultados</a>
+          {% elif user and user.tipo == "apoiador" %}
+          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
+          <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
+          {% elif user and user.tipo == "jogador" %}
+          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
+          <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
+          <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
+          {% else %}
+          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
           {% endif %}
         </nav>
 
@@ -92,7 +118,7 @@
             {{ user.nome[:1]|upper }}
           </div>
           <a
-            href="/dashboard"
+            href="{% if user.tipo == 'admin' %}/admin/dashboard{% elif user.tipo == 'jogador' %}/player/offers{% else %}/dashboard{% endif %}"
             class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
           >
             Olá, {{ user.nome }}
@@ -121,13 +147,13 @@
       </div>
     </header>
 
-    <main class="max-w-6xl mx-auto px-6 py-10">
+    <main class="max-w-6xl mx-auto px-6 py-10 flex-1 w-full">
       {% block content %}{% endblock %}
     </main>
 
-    <div id="toastContainer" class="fixed top-6 right-6 z-50 space-y-3"></div>
+    <div id="toastContainer" class="fixed bottom-6 right-6 z-50 space-y-3 flex flex-col-reverse"></div>
 
-    <footer class="border-t border-white/10 py-8">
+    <footer class="border-t border-white/10 py-8 mt-auto">
       <div class="max-w-6xl mx-auto px-6 text-sm text-gray-400 flex flex-col md:flex-row items-center justify-between gap-4">
         <p>SAFE STAKE © 2026. Todos os direitos reservados.</p>
         <p class="text-emerald-400 font-title text-xs">DARK · BOLD · HIGH-TECH</p>

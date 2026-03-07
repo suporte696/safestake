@@ -1,5 +1,7 @@
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
@@ -11,7 +13,27 @@ from models import Investment, MatchResult, StakeOffer, TournamentEscrow, Wallet
 from routers.auth import ensure_admin_user, fetch_current_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 MONEY_Q = Decimal("0.01")
+LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
+
+
+def _ensure_wallet(db: Session, user_id: int, with_lock: bool = False) -> Wallet:
+    stmt = select(Wallet).where(Wallet.user_id == user_id)
+    if with_lock:
+        stmt = stmt.with_for_update()
+    wallet = db.execute(stmt).scalars().first()
+    if wallet:
+        return wallet
+    wallet = Wallet(
+        user_id=user_id,
+        saldo_disponivel=Decimal("0"),
+        saldo_bloqueado=Decimal("0"),
+        saldo_em_jogo=Decimal("0"),
+    )
+    db.add(wallet)
+    db.flush()
+    return wallet
 
 
 def q_money(value: Decimal) -> Decimal:
@@ -63,18 +85,38 @@ def sync_offer_escrow(db: Session, offer: StakeOffer) -> TournamentEscrow:
     return escrow
 
 
+def force_complete_and_release_escrow(db: Session, offer: StakeOffer) -> dict:
+    """Fecha o escrow com o total já coletado e libera para o jogador (iniciar sem meta total)."""
+    escrow = get_offer_escrow_locked(db, offer)
+    if escrow.status == "REFUNDED":
+        return {"released_total": q_money(Decimal("0"))}
+    collected = q_money(Decimal(str(escrow.total_collected or 0)))
+    if collected <= 0:
+        return {"released_total": q_money(Decimal("0"))}
+    if escrow.status == "COLLECTING":
+        escrow.total_required = collected
+        escrow.status = "COMPLETE"
+        escrow.completed_at = datetime.now(timezone.utc)
+        offer.escrow_status = "COMPLETE"
+    return release_offer_escrow_to_player(db, offer)
+
+
 def release_offer_escrow_to_player(db: Session, offer: StakeOffer) -> dict:
     escrow = get_offer_escrow_locked(db, offer)
     if escrow.status != "COMPLETE":
         return {"released_total": q_money(Decimal("0"))}
 
-    player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
-    if not player_wallet:
-        raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
+    player_wallet = _ensure_wallet(db, offer.player_id, with_lock=True)
 
     collected = q_money(Decimal(str(escrow.total_collected or 0)))
     player_em_jogo = q_money(Decimal(str(player_wallet.saldo_em_jogo or 0)))
     released_total = q_money(min(collected, player_em_jogo))
+    if collected > 0 and player_em_jogo > 0 and released_total < collected:
+        logger.warning(
+            "release_offer_escrow: reconciling mismatch em_jogo (%s) < collected (%s) for offer_id=%s player_id=%s",
+            player_em_jogo, collected, offer.id, offer.player_id,
+        )
+        released_total = collected
     if released_total > 0:
         player_wallet.saldo_em_jogo = q_money(max(Decimal("0"), player_em_jogo - released_total))
         player_wallet.saldo_disponivel = q_money(Decimal(str(player_wallet.saldo_disponivel or 0)) + released_total)
@@ -94,9 +136,7 @@ def refund_offer_escrow(db: Session, offer: StakeOffer, reason: str = "") -> dic
     refunded_total = Decimal("0")
     for inv in investments:
         amount = q_money(Decimal(str(inv.valor_investido or 0)))
-        backer_wallet = db.execute(select(Wallet).where(Wallet.user_id == inv.backer_id).with_for_update()).scalars().first()
-        if not backer_wallet:
-            raise HTTPException(status_code=400, detail=f"Carteira não encontrada para apoiador {inv.backer_id}.")
+        backer_wallet = _ensure_wallet(db, inv.backer_id, with_lock=True)
         backer_wallet.saldo_disponivel = q_money(Decimal(str(backer_wallet.saldo_disponivel or 0)) + amount)
         em_jogo = Decimal(str(backer_wallet.saldo_em_jogo or 0))
         backer_wallet.saldo_em_jogo = q_money(max(Decimal("0"), em_jogo - amount))
@@ -106,9 +146,7 @@ def refund_offer_escrow(db: Session, offer: StakeOffer, reason: str = "") -> dic
     refunded_total = q_money(refunded_total)
 
     if refunded_total > 0:
-        player_wallet = db.execute(select(Wallet).where(Wallet.user_id == offer.player_id).with_for_update()).scalars().first()
-        if not player_wallet:
-            raise HTTPException(status_code=400, detail="Carteira do jogador não encontrada.")
+        player_wallet = _ensure_wallet(db, offer.player_id, with_lock=True)
         em_jogo_player = Decimal(str(player_wallet.saldo_em_jogo or 0))
         player_wallet.saldo_em_jogo = q_money(max(Decimal("0"), em_jogo_player - refunded_total))
 
@@ -122,12 +160,12 @@ def refund_offer_escrow(db: Session, offer: StakeOffer, reason: str = "") -> dic
 
 
 def auto_refund_expired_escrows(db: Session) -> int:
-    now = datetime.now(timezone.utc)
+    now_sp = datetime.now(LOCAL_TZ).replace(tzinfo=None)
     stmt = (
         select(TournamentEscrow)
         .where(TournamentEscrow.status == "COLLECTING")
         .where(TournamentEscrow.deadline_at.is_not(None))
-        .where(TournamentEscrow.deadline_at < now)
+        .where(TournamentEscrow.deadline_at < now_sp)
         .options(joinedload(TournamentEscrow.offer).joinedload(StakeOffer.tournament))
         .with_for_update()
     )

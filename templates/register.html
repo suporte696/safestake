@@ -61,14 +61,25 @@
       />
     </div>
     <div class="space-y-2">
+      <label class="text-xs text-gray-400">Tipo de chave PIX</label>
+      <select id="pix_key_type" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400">
+        <option value="cpf">CPF</option>
+        <option value="email">E-mail</option>
+        <option value="telefone">Telefone</option>
+      </select>
+    </div>
+    <div class="space-y-2">
       <label class="text-xs text-gray-400">Chave Pix (obrigatória para recebimento de lucros)</label>
       <input
         type="text"
+        id="pix_key_input"
         name="pix_key"
         value="{{ form_data.pix_key or '' }}"
-        placeholder="CPF, email, celular ou chave aleatória"
+        placeholder="000.000.000-00"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
         required
+        maxlength="14"
+        autocomplete="off"
       />
     </div>
     <div class="space-y-2">
@@ -112,5 +123,39 @@
       }
     });
   }
+
+  (function () {
+    const typeSelect = document.getElementById("pix_key_type");
+    const input = document.getElementById("pix_key_input");
+    if (!typeSelect || !input) return;
+
+    function maskPix(value, type) {
+      const digits = value.replace(/\D/g, "");
+      if (type === "cpf") {
+        return digits.slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
+      }
+      if (type === "telefone") {
+        if (digits.length <= 2) return digits.replace(/(\d{0,2})/, "($1");
+        if (digits.length <= 7) return digits.replace(/(\d{2})(\d{0,5})/, "($1) $2");
+        return digits.slice(0, 11).replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
+      }
+      return value;
+    }
+
+    function applyMask() {
+      const type = typeSelect.value;
+      const start = input.selectionStart;
+      const oldLen = input.value.length;
+      input.value = maskPix(input.value, type);
+      if (type === "cpf") input.setAttribute("maxlength", "14");
+      else if (type === "telefone") input.setAttribute("maxlength", "15");
+      else input.removeAttribute("maxlength");
+      const newLen = input.value.length;
+      input.setSelectionRange(Math.max(0, start + (newLen - oldLen)), Math.max(0, start + (newLen - oldLen)));
+    }
+
+    typeSelect.addEventListener("change", () => { input.value = ""; input.placeholder = typeSelect.value === "cpf" ? "000.000.000-00" : typeSelect.value === "telefone" ? "(00) 00000-0000" : "seu@email.com"; applyMask(); });
+    input.addEventListener("input", applyMask);
+  })();
 </script>
 {% endblock %}

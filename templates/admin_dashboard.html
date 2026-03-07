@@ -1,24 +1,28 @@
 {% extends "base.html" %}
 
-{% block title %}Admin KYC | SAFE STAKE{% endblock %}
+{% block title %}Admin | SAFE STAKE{% endblock %}
 
 {% block content %}
-<section class="space-y-8">
+<section class="space-y-6">
   <div class="space-y-2">
     <h1 class="font-title text-3xl uppercase">Painel Admin</h1>
     <p class="text-gray-400 text-sm">Encerramento de torneios, split de pagamentos Pix e gestão de KYC.</p>
-    <a
-      href="/admin/results"
-      class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
-    >
-      Ir para revisão de resultados
-    </a>
-    <a
-      href="/admin/calls"
-      class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
-    >
-      Ir para agendamento de calls
-    </a>
+  </div>
+
+  <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium border border-white/10 border-b-0 -mb-px text-white transition" data-tab="inicio">Início</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="torneios">Torneios ativos</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="acerto">Acerto de Contas</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="saques">Solicitações de saque</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="kyc">KYC</button>
+    <a href="/admin/results" class="px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition">Revisão de resultados</a>
+    <a href="/admin/calls" class="px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition">Calls</a>
+  </div>
+
+  <div id="tab-inicio" class="admin-tab-panel space-y-8">
+  <div class="flex flex-wrap gap-3">
+    <a href="/admin/results" class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm">Revisão de resultados</a>
+    <a href="/admin/calls" class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm">Agendamento de calls</a>
   </div>
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
@@ -93,6 +97,19 @@
         />
       </div>
       <div class="space-y-2">
+        <label class="text-xs text-gray-400">Sala / Plataforma <span class="text-amber-400">*</span></label>
+        <select
+          name="room"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        >
+          <option value="">Selecione a sala</option>
+          {% for room in supported_rooms %}
+          <option value="{{ room }}">{{ room }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="space-y-2">
         <label class="text-xs text-gray-400">Buy-in (US$)</label>
         <input
           type="number"
@@ -147,7 +164,9 @@
       </div>
     </form>
   </div>
+  </div>
 
+  <div id="tab-torneios" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Torneios ativos</h2>
@@ -177,12 +196,23 @@
             <td class="py-3">
               <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">{{ tournament.status }}</span>
             </td>
-            <td class="py-3 text-right">
+            <td class="py-3 text-right space-x-2">
               <button
                 type="button"
-                class="open-close-modal px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs"
+                class="view-tournament-details px-3 py-1 rounded-full border border-white/30 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition text-xs"
+                data-tournament-id="{{ tournament.id }}"
+              >
+                Ver detalhes
+              </button>
+              {% set can_close = can_close_tournament.get(tournament.id, false) %}
+              <button
+                type="button"
+                class="open-close-modal px-3 py-1 rounded-full text-xs transition {{ 'border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black' if can_close else 'border border-white/20 text-gray-500 cursor-not-allowed' }}"
                 data-tournament-id="{{ tournament.id }}"
                 data-tournament-name="{{ tournament.nome }}"
+                data-can-close="{{ '1' if can_close else '0' }}"
+                {{ 'disabled' if not can_close else '' }}
+                title="{{ 'Encerrar torneio (meta atingida ou jogador confirmou)' if can_close else 'Libere quando a meta for atingida ou o jogador confirmar que vai jogar' }}"
               >
                 Encerrar Torneio
               </button>
@@ -213,7 +243,9 @@
     </div>
     {% endif %}
   </div>
+  </div>
 
+  <div id="tab-acerto" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Acerto de Contas (Split)</h2>
@@ -248,8 +280,7 @@
                 <tr>
                   <th class="py-3">Apoiador</th>
                   <th class="py-3">Valor Investido</th>
-                  <th class="py-3">Valor a Receber</th>
-                  <th class="py-3">Chave Pix</th>
+                  <th class="py-3">Valor a ser pago</th>
                   <th class="py-3">Status</th>
                   <th class="py-3 text-right">Ação</th>
                 </tr>
@@ -258,9 +289,17 @@
                 {% for row in rows %}
                 <tr>
                   <td class="py-3">{{ row.apoiador_nome }}</td>
-                  <td class="py-3 font-mono">US$ {{ "%.2f"|format(row.valor_investido) }}</td>
+                  <td class="py-3 font-mono">
+                    {% if row.payout_status != "PAID" %}
+                    <form method="post" action="/admin/investments/{{ row.investment_id }}/update-value" class="inline-flex items-center gap-2">
+                      <input type="number" name="valor_investido" step="0.01" min="0" value="{{ "%.2f"|format(row.valor_investido) }}" class="w-24 bg-[#0b0b0b] border border-white/20 rounded px-2 py-1 text-sm text-white font-mono">
+                      <button type="submit" class="text-xs text-emerald-400 hover:text-emerald-300">Salvar</button>
+                    </form>
+                    {% else %}
+                    US$ {{ "%.2f"|format(row.valor_investido) }}
+                    {% endif %}
+                  </td>
                   <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(row.valor_receber) }}</td>
-                  <td class="py-3 font-mono text-xs">{{ row.pix_key }}</td>
                   <td class="py-3">
                     {% if row.payout_status == "PAID" %}
                     <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">Pago</span>
@@ -293,7 +332,9 @@
     </div>
     {% endif %}
   </div>
+  </div>
 
+  <div id="tab-saques" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
@@ -307,7 +348,8 @@
         <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
           <tr>
             <th class="py-3">Usuário</th>
-            <th class="py-3">Valor</th>
+            <th class="py-3">Valor (US$)</th>
+            <th class="py-3">Valor (R$)</th>
             <th class="py-3">PIX destino</th>
             <th class="py-3">Status</th>
             <th class="py-3">Obs.</th>
@@ -322,7 +364,11 @@
               {{ wr.user.nome if wr.user else ("Usuário #" ~ wr.user_id) }}
             </td>
             <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
-            <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
+            <td class="py-3 font-mono text-xs text-gray-400">R$ {{ "%.2f"|format((wr.amount|float) * ptax_rate) }}</td>
+            <td class="py-3 font-mono text-xs">
+              <span class="copy-pix-value text-gray-400" data-pix="{{ wr.pix_key }}" title="Copiar PIX (valor completo)">{{ pix_masked_by_wr.get(wr.id, wr.pix_key) }}</span>
+              <button type="button" class="copy-pix-btn ml-1 inline-flex align-middle text-gray-400 hover:text-emerald-400 transition" data-pix="{{ wr.pix_key }}" title="Copiar chave PIX" aria-label="Copiar">📋</button>
+            </td>
             <td class="py-3">
               {% if wr.status == "PENDING" %}
               <span class="px-3 py-1 rounded-full text-xs border border-amber-400/40 text-amber-300">Pendente</span>
@@ -340,27 +386,23 @@
                 <summary class="cursor-pointer px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs">
                   Revisar
                 </summary>
-                <div class="mt-2 p-3 border border-white/10 rounded-xl bg-[#0b0b0b] min-w-[280px]">
-                  <form method="post" action="/admin/withdrawals/{{ wr.id }}/approve" class="space-y-2">
-                    <input
-                      name="note"
-                      placeholder="Obs. opcional (aprovação)"
-                      class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs"
-                    />
-                    <button class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-xs font-semibold">
-                      Aprovar e debitar saldo
-                    </button>
-                  </form>
-                  <form method="post" action="/admin/withdrawals/{{ wr.id }}/reject" class="space-y-2 mt-2">
-                    <input
-                      name="note"
-                      placeholder="Motivo da rejeição"
-                      class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs"
-                    />
-                    <button class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-xs">
-                      Rejeitar
-                    </button>
-                  </form>
+                <div class="mt-2 p-3 border border-white/10 rounded-xl bg-[#0b0b0b] min-w-[280px] space-y-3">
+                  <div class="flex rounded-lg bg-white/5 p-1 border border-white/10 withdraw-switch-group">
+                    <button type="button" class="withdraw-switch-approve flex-1 px-3 py-2 rounded-md text-xs font-semibold bg-emerald-400 text-black">Aprovar</button>
+                    <button type="button" class="withdraw-switch-reject flex-1 px-3 py-2 rounded-md text-xs text-gray-400 hover:text-white">Rejeitar</button>
+                  </div>
+                  <div class="withdraw-form-approve">
+                    <form method="post" action="/admin/withdrawals/{{ wr.id }}/approve" class="space-y-2">
+                      <input name="note" placeholder="Obs. opcional (aprovação)" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
+                      <button type="submit" class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-xs font-semibold">Confirmar aprovação</button>
+                    </form>
+                  </div>
+                  <div class="withdraw-form-reject hidden">
+                    <form method="post" action="/admin/withdrawals/{{ wr.id }}/reject" class="space-y-2">
+                      <input name="note" placeholder="Motivo da rejeição" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
+                      <button type="submit" class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-xs font-semibold">Confirmar rejeição</button>
+                    </form>
+                  </div>
                 </div>
               </details>
               {% else %}
@@ -374,7 +416,9 @@
     </div>
     {% endif %}
   </div>
+  </div>
 
+  <div id="tab-kyc" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Pendentes</h2>
@@ -426,25 +470,49 @@
     </div>
     {% endif %}
   </div>
-
-  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
-    <h2 class="font-title text-xl uppercase">Últimas revisões</h2>
-    {% if not reviewed_docs %}
-    <p class="text-sm text-gray-500">Sem revisões concluídas.</p>
-    {% else %}
-    <div class="space-y-2">
-      {% for doc in reviewed_docs %}
-      <div class="flex flex-wrap items-center justify-between text-sm border border-white/10 rounded-xl px-4 py-3">
-        <span>{{ doc.user.nome }} · #{{ doc.user.id }}</span>
-        <span class="{% if doc.status == 'APPROVED' %}text-emerald-400{% else %}text-red-300{% endif %}">
-          {{ doc.status }}
-        </span>
-      </div>
-      {% endfor %}
-    </div>
-    {% endif %}
   </div>
+
 </section>
+
+<div id="tournamentDetailsModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/70" id="tournamentDetailsModalBackdrop"></div>
+  <div class="relative max-w-lg mx-auto mt-16 mb-8 max-h-[85vh] overflow-auto bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between sticky top-0 bg-[#090909] pb-2 border-b border-white/10">
+      <h3 class="font-title text-lg uppercase text-emerald-400">Detalhes do torneio</h3>
+      <button type="button" id="closeTournamentDetailsBtn" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <div id="tournamentDetailsContent"></div>
+  </div>
+</div>
+
+{% for tournament in active_tournaments %}
+<template id="tournament-detail-{{ tournament.id }}">
+  <div class="space-y-3 text-sm">
+    <p><span class="text-gray-500">Nome:</span> {{ tournament.nome }}</p>
+    <p><span class="text-gray-500">ID:</span> #{{ tournament.id }}</p>
+    <p><span class="text-gray-500">Buy-in:</span> US$ {{ "%.2f"|format(tournament.buyin) }}</p>
+    <p><span class="text-gray-500">Data/Hora:</span> {{ tournament.data_hora.strftime("%d/%m/%Y %H:%M") if tournament.data_hora else "-" }}</p>
+    <p><span class="text-gray-500">Sala:</span> {{ tournament.plataforma or "-" }}</p>
+    <p><span class="text-gray-500">Status:</span> <span class="px-2 py-0.5 rounded text-xs border border-emerald-400/40 text-emerald-400">{{ tournament.status }}</span></p>
+    {% set supporters = supporters_by_tournament.get(tournament.id, []) %}
+    <div class="pt-2 border-t border-white/10">
+      <p class="text-gray-500 mb-2">Apoiadores ({{ supporters|length }}):</p>
+      {% if supporters %}
+      <ul class="space-y-1">
+        {% for s in supporters %}
+        <li class="flex justify-between"><span>{{ s.name }}</span><span class="font-mono text-emerald-400">{{ "%.2f"|format(s.pct) }}% · US$ {{ "%.2f"|format(s.amount) }}</span></li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="text-gray-500">Nenhum apoiador ainda.</p>
+      {% endif %}
+    </div>
+    <div class="pt-2 border-t border-white/10">
+      <a href="#" class="link-to-acerto text-emerald-400 hover:text-emerald-300 text-xs" data-tournament-id="{{ tournament.id }}" data-finalized="{{ '1' if tournament.id in finalized_tournament_ids else '0' }}">Ir para Acerto de Contas</a>
+    </div>
+  </div>
+</template>
+{% endfor %}
 
 <div id="closeTournamentModal" class="fixed inset-0 z-50 hidden">
   <div class="absolute inset-0 bg-black/70"></div>
@@ -476,6 +544,104 @@
 </div>
 
 <script>
+  function switchToTab(tabId) {
+    const tab = tabId || "inicio";
+    const btn = document.querySelector(".admin-tab[data-tab=\"" + tab + "\"]");
+    if (!btn) return;
+    document.querySelectorAll(".admin-tab").forEach((b) => {
+      b.classList.add("text-gray-400");
+      b.classList.remove("border-white/10", "border-b-0", "text-white", "font-medium");
+    });
+    btn.classList.remove("text-gray-400");
+    btn.classList.add("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
+    document.querySelectorAll(".admin-tab-panel").forEach((p) => p.classList.add("hidden"));
+    const panel = document.getElementById("tab-" + tab);
+    if (panel) panel.classList.remove("hidden");
+  }
+  const tabParam = new URLSearchParams(window.location.search).get("tab");
+  if (tabParam) switchToTab(tabParam);
+  document.querySelectorAll(".admin-tab").forEach((btn) => {
+    btn.addEventListener("click", () => switchToTab(btn.getAttribute("data-tab")));
+  });
+
+  document.querySelectorAll(".view-tournament-details").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-tournament-id");
+      const tpl = document.getElementById("tournament-detail-" + id);
+      const content = document.getElementById("tournamentDetailsContent");
+      if (tpl && content) {
+        content.innerHTML = tpl.innerHTML;
+        document.getElementById("tournamentDetailsModal").classList.remove("hidden");
+        content.querySelectorAll(".link-to-acerto").forEach((link) => {
+          link.addEventListener("click", (e) => {
+            e.preventDefault();
+            document.getElementById("tournamentDetailsModal").classList.add("hidden");
+            document.querySelectorAll(".admin-tab").forEach((b) => {
+              b.classList.remove("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
+              b.classList.add("text-gray-400");
+            });
+            const acertoTab = document.querySelector(".admin-tab[data-tab=\"acerto\"]");
+            if (acertoTab) {
+              acertoTab.classList.remove("text-gray-400");
+              acertoTab.classList.add("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
+            }
+            document.querySelectorAll(".admin-tab-panel").forEach((p) => p.classList.add("hidden"));
+            const acertoPanel = document.getElementById("tab-acerto");
+            if (acertoPanel) acertoPanel.classList.remove("hidden");
+            const tid = link.getAttribute("data-tournament-id");
+            const finalized = link.getAttribute("data-finalized") === "1";
+            if (tid && finalized) {
+              const splitEl = document.getElementById("split-" + tid);
+              if (splitEl && splitEl.classList.contains("hidden")) splitEl.classList.remove("hidden");
+            }
+          });
+        });
+      }
+    });
+  });
+  document.getElementById("closeTournamentDetailsBtn")?.addEventListener("click", () => {
+    document.getElementById("tournamentDetailsModal").classList.add("hidden");
+  });
+  document.getElementById("tournamentDetailsModalBackdrop")?.addEventListener("click", () => {
+    document.getElementById("tournamentDetailsModal").classList.add("hidden");
+  });
+
+  document.querySelectorAll(".copy-pix-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pix = btn.getAttribute("data-pix") || "";
+      if (!pix) return;
+      navigator.clipboard.writeText(pix).then(() => {
+        if (window.showToast) window.showToast("Chave PIX copiada.");
+      }).catch(() => {
+        if (window.showToast) window.showToast("Não foi possível copiar.", "error");
+      });
+    });
+  });
+
+  document.querySelectorAll(".withdraw-switch-group").forEach((group) => {
+    const details = group.closest("details");
+    const approveBtn = group.querySelector(".withdraw-switch-approve");
+    const rejectBtn = group.querySelector(".withdraw-switch-reject");
+    const formApprove = details?.querySelector(".withdraw-form-approve");
+    const formReject = details?.querySelector(".withdraw-form-reject");
+    approveBtn?.addEventListener("click", () => {
+      approveBtn.classList.add("bg-emerald-400", "text-black");
+      approveBtn.classList.remove("text-gray-400");
+      rejectBtn?.classList.remove("bg-red-500", "text-white");
+      rejectBtn?.classList.add("text-gray-400");
+      formApprove?.classList.remove("hidden");
+      formReject?.classList.add("hidden");
+    });
+    rejectBtn?.addEventListener("click", () => {
+      rejectBtn?.classList.add("bg-red-500", "text-white");
+      rejectBtn?.classList.remove("text-gray-400");
+      approveBtn?.classList.remove("bg-emerald-400", "text-black");
+      approveBtn?.classList.add("text-gray-400");
+      formReject?.classList.remove("hidden");
+      formApprove?.classList.add("hidden");
+    });
+  });
+
   const closeModal = document.getElementById("closeTournamentModal");
   const closeModalBtn = document.getElementById("closeTournamentModalBtn");
   const closeText = document.getElementById("closeTournamentText");
@@ -501,6 +667,7 @@
 
   document.querySelectorAll(".open-close-modal").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (btn.disabled || btn.getAttribute("data-can-close") !== "1") return;
       const id = btn.getAttribute("data-tournament-id");
       const name = btn.getAttribute("data-tournament-name") || "Torneio";
       if (!id) return;

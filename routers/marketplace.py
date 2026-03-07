@@ -9,11 +9,17 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
-from constants import normalize_supported_room
+from constants import SUPPORTED_ROOMS, normalize_supported_room
 from db import get_db
-from models import Investment, PixTransaction, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet, WithdrawalRequest
+from models import Investment, MatchResult, PixTransaction, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet, WithdrawalRequest
 from routers.auth import ensure_user_not_blocked, fetch_current_user, is_user_kyc_approved
-from routers.escrow import q_money, refund_offer_escrow, release_offer_escrow_to_player, sync_offer_escrow
+from routers.escrow import (
+    force_complete_and_release_escrow,
+    q_money,
+    refund_offer_escrow,
+    release_offer_escrow_to_player,
+    sync_offer_escrow,
+)
 from services.jobs import run_scheduled_jobs
 
 templates = Jinja2Templates(directory="templates")
@@ -56,17 +62,8 @@ def _is_offer_closed_by_start_time(offer: StakeOffer) -> bool:
         return False
 
     start_at = tournament.data_hora
-    # Ignora o timezone armazenado e interpreta sempre como horário local (São Paulo)
-    start_local = datetime(
-        start_at.year,
-        start_at.month,
-        start_at.day,
-        start_at.hour,
-        start_at.minute,
-        start_at.second,
-        start_at.microsecond,
-        tzinfo=LOCAL_TZ,
-    )
+    # data_hora é sempre naive em horário de São Paulo
+    start_local = start_at.replace(tzinfo=LOCAL_TZ) if start_at.tzinfo is None else start_at.astimezone(LOCAL_TZ)
     start_utc = start_local.astimezone(timezone.utc)
     now_utc = datetime.now(timezone.utc)
     return now_utc >= start_utc
@@ -86,6 +83,7 @@ def serialize_offer(offer: StakeOffer) -> dict:
         progress_sale_pct = min(Decimal("100"), (sold_buyin_amount / target_buyin_amount) * Decimal("100"))
     is_closed = _is_offer_closed_by_start_time(offer)
     can_support = offer.escrow_status == "COLLECTING" and available_pct > 0 and not is_closed
+    start_time = tournament.data_hora if tournament else None
     return {
         "id": offer.id,
         "player_name": player.nome if player else "Player",
@@ -104,7 +102,7 @@ def serialize_offer(offer: StakeOffer) -> dict:
         "sold_buyin_amount": sold_buyin_amount,
         "target_buyin_amount": target_buyin_amount,
         "progress_sale_pct": progress_sale_pct,
-        "start_time": tournament.data_hora if tournament else None,
+        "start_time": start_time,
         "is_closed": is_closed,
         "can_support": can_support,
     }
@@ -198,6 +196,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
+    if user.tipo == "admin":
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
+    if user.tipo == "jogador":
+        return RedirectResponse(url="/player/offers", status_code=303)
     wallet = {"saldo_disponivel": 0, "saldo_bloqueado": 0, "saldo_em_jogo": 0}
     if user and user.wallet:
         wallet = {
@@ -290,6 +292,25 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     )
     withdrawal_requests = db.execute(stmt_withdrawals).scalars().all()
 
+    saldo_pendente = Decimal("0")
+    if user and user.tipo == "apoiador":
+        pendente_row = db.execute(
+            select(
+                func.coalesce(
+                    func.sum(
+                        func.coalesce(Investment.valor_investido, 0) + func.coalesce(Investment.lucro_recebido, 0)
+                    ),
+                    0,
+                )
+            ).where(
+                Investment.backer_id == user.id,
+                Investment.payout_status == "PENDING",
+            )
+        ).scalar_one()
+        saldo_pendente = q_money(Decimal(str(pendente_row or 0)))
+    if saldo_pendente is None:
+        saldo_pendente = Decimal("0")
+
     return templates.TemplateResponse(
         "dashboard.html",
         {
@@ -302,6 +323,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             "pix_transactions": pix_transactions,
             "total_investido": total_investido,
             "total_recebido": total_recebido,
+            "saldo_pendente": saldo_pendente,
             "user": user,
             "requires_auth": True,
         },
@@ -330,6 +352,14 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
         .order_by(StakeOffer.id.desc())
     )
     offers = db.execute(stmt).scalars().all()
+    tournament_ids_jogando = [o.tournament_id for o in offers if o.tournament and o.tournament.status == "Jogando"]
+    has_result_ids: set[int] = set()
+    if tournament_ids_jogando:
+        result_tids = db.execute(
+            select(MatchResult.tournament_id).where(MatchResult.tournament_id.in_(tournament_ids_jogando))
+        ).scalars().all()
+        has_result_ids = {int(tid) for tid in result_tids if tid is not None}
+    awaiting_result_count = len([tid for tid in tournament_ids_jogando if tid not in has_result_ids])
     return templates.TemplateResponse(
         "player_offers.html",
         {
@@ -337,6 +367,8 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "offers": offers,
             "wallet": wallet_summary,
+            "supported_rooms": sorted(SUPPORTED_ROOMS),
+            "awaiting_result_count": awaiting_result_count,
             "requires_auth": True,
         },
     )
@@ -384,7 +416,7 @@ def update_player_offer(
             local_dt = datetime.fromisoformat(start_time)
             if local_dt.tzinfo is None:
                 local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
-            data_hora = local_dt
+            data_hora = local_dt.replace(tzinfo=None)
         except ValueError:
             data_hora = None
 
@@ -442,6 +474,7 @@ def update_player_offer(
 def confirm_player_will_play(
     offer_id: int,
     request: Request,
+    force_partial: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = fetch_current_user(request, db)
@@ -450,6 +483,7 @@ def confirm_player_will_play(
     if user.tipo != "jogador":
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
+    iniciar_sem_meta = force_partial.strip().lower() in ("1", "true", "yes", "on")
 
     with db.begin():
         offer = db.execute(
@@ -461,11 +495,14 @@ def confirm_player_will_play(
         if not offer:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
         sync_offer_escrow(db, offer)
-        result = release_offer_escrow_to_player(db, offer)
+        if iniciar_sem_meta:
+            result = force_complete_and_release_escrow(db, offer)
+        else:
+            result = release_offer_escrow_to_player(db, offer)
         if Decimal(str(result["released_total"])) <= 0:
             raise HTTPException(
                 status_code=400,
-                detail="Não há saldo em escrow liberável para esta oferta no momento.",
+                detail="Não há saldo em escrow liberável. Se quiser iniciar mesmo sem atingir a meta, use \"Iniciar partida (mesmo sem 100%)\".",
             )
     return RedirectResponse(url="/player/offers?playing=1", status_code=303)
 
@@ -532,15 +569,16 @@ def create_player_offer(
     data_hora = None
     if start_time:
         try:
-            # Valor vindo de <input type="datetime-local"> (sem timezone).
             local_dt = datetime.fromisoformat(start_time)
             if local_dt.tzinfo is None:
                 local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
-            data_hora = local_dt
+            data_hora = local_dt.replace(tzinfo=None)
         except ValueError:
             data_hora = None
 
     with db.begin():
+        now_sp = datetime.now(LOCAL_TZ).replace(tzinfo=None)
+        deadline_at = data_hora or (now_sp + timedelta(hours=24))
         tournament = Tournament(
             nome=tournament_name,
             sharkscope_id=normalized_room,
@@ -562,7 +600,6 @@ def create_player_offer(
         db.add(offer)
         db.flush()
         total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
-        deadline_at = data_hora or (datetime.now(timezone.utc) + timedelta(hours=24))
         db.add(
             TournamentEscrow(
                 tournament_id=tournament.id,
@@ -621,15 +658,23 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         buyin = Decimal(str(tournament.buyin))
         markup = Decimal(str(offer.markup))
         total_pct = Decimal(str(offer.total_disponivel_pct))
-        sold_pct = Decimal(str(offer.vendido_pct))
+        sum_sold = db.execute(
+            select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
+        ).scalar_one()
+        sold_pct = q_money(Decimal(str(sum_sold or 0)))
         available_pct = total_pct - sold_pct
 
-        if buyin <= 0:
-            raise HTTPException(status_code=400, detail="Buy-in inválido nesta oferta. Tente novamente mais tarde.")
-
+        if buyin <= 0 or markup <= 0:
+            raise HTTPException(status_code=400, detail="Buy-in ou markup inválido nesta oferta. Tente novamente mais tarde.")
         share_pct = (amount / (buyin * markup)) * Decimal("100")
-        if share_pct > available_pct:
-            raise HTTPException(status_code=400, detail="Não há cota suficiente para esse valor de apoio.")
+        share_pct = q_money(share_pct)
+        if share_pct <= 0:
+            raise HTTPException(status_code=400, detail="Valor do apoio resulta em percentual inválido.")
+        if share_pct > available_pct + Decimal("0.01"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Não há cota suficiente para esse valor (disponível: {float(available_pct):.1f}%). Recarregue a página e tente novamente.",
+            )
 
         if user.wallet.saldo_disponivel < amount:
             raise HTTPException(status_code=400, detail="Saldo insuficiente para concluir este apoio.")

@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import logging
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,6 +11,7 @@ from routers.escrow import release_offer_escrow_to_player
 from services.notification_jobs import run_result_deadline_jobs
 
 logger = logging.getLogger(__name__)
+LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def _q_money(value: Decimal) -> Decimal:
@@ -20,7 +22,7 @@ def _normalize_to_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
+        value = value.replace(tzinfo=LOCAL_TZ)
     return value.astimezone(timezone.utc)
 
 

@@ -38,8 +38,9 @@
 
   <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
     {% for offer in offers %}
-    <article
-      class="bg-black border border-white/10 rounded-2xl p-6 space-y-5 transition hover:border-emerald-400 hover:glow"
+    <a
+      href="/stake/{{ offer.id }}"
+      class="block bg-black border border-white/10 rounded-2xl p-6 space-y-5 transition hover:border-emerald-400 hover:glow cursor-pointer"
     >
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-4">
@@ -94,24 +95,21 @@
           <p class="font-mono text-sm text-white">
             {{ offer.total_pct - offer.sold_pct }}% de {{ offer.total_pct }}%
           </p>
+          {% set avail_pct = (offer.total_pct - offer.sold_pct) %}
+          {% set avail_usd = (offer.buyin * offer.markup * avail_pct / 100) %}
+          <p class="text-xs text-gray-500 font-mono">≈ US$ {{ "%.2f"|format(avail_usd) }}</p>
         </div>
         {% if offer.can_support %}
-        <a
-          href="/stake/{{ offer.id }}"
-          class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
-        >
+        <span class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 transition">
           Apoiar
-        </a>
+        </span>
         {% else %}
-        <a
-          href="/stake/{{ offer.id }}"
-          class="px-4 py-2 rounded-full border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition"
-        >
+        <span class="px-4 py-2 rounded-full border border-white/20 text-gray-300 transition">
           Ver detalhes
-        </a>
+        </span>
         {% endif %}
       </div>
-    </article>
+    </a>
     {% endfor %}
   </div>
 </section>

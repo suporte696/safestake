@@ -34,12 +34,13 @@ def seed_users(db: Session) -> tuple[User, User]:
 
 
 def seed_tournaments(db: Session, player: User) -> None:
-    now = datetime.now(timezone.utc)
+    from zoneinfo import ZoneInfo
+    now_sp = datetime.now(ZoneInfo("America/Sao_Paulo")).replace(tzinfo=None)
     tournaments = [
         Tournament(
             nome="Sunday Million",
             buyin=Decimal("215.00"),
-            data_hora=now + timedelta(days=1, hours=3),
+            data_hora=now_sp + timedelta(days=1, hours=3),
             status="Aberto",
             sharkscope_id="PokerStars",
             plataforma="PokerStars",
@@ -47,7 +48,7 @@ def seed_tournaments(db: Session, player: User) -> None:
         Tournament(
             nome="Bounty Builder",
             buyin=Decimal("55.00"),
-            data_hora=now + timedelta(days=2, hours=6),
+            data_hora=now_sp + timedelta(days=2, hours=6),
             status="Aberto",
             sharkscope_id="GGPoker",
             plataforma="GGPoker",
@@ -55,7 +56,7 @@ def seed_tournaments(db: Session, player: User) -> None:
         Tournament(
             nome="High Roller Turbo",
             buyin=Decimal("109.00"),
-            data_hora=now + timedelta(days=3, hours=4),
+            data_hora=now_sp + timedelta(days=3, hours=4),
             status="Aberto",
             sharkscope_id="888poker",
             plataforma="888poker",

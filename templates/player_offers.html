@@ -14,6 +14,12 @@
     Você informou que não vai jogar. Os aportes foram estornados aos apoiadores.
   </div>
   {% endif %}
+  {% if awaiting_result_count and awaiting_result_count > 0 %}
+  <div class="border border-amber-500/40 text-amber-300 bg-amber-500/10 px-4 py-3 rounded-xl text-sm flex flex-wrap items-center justify-between gap-3">
+    <span>Você tem {{ awaiting_result_count }} torneio(s) aguardando resultado. Informe em até 24h para evitar suspensão da conta.</span>
+    <a href="/player/results/new" class="px-4 py-2 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:bg-amber-500/30 transition text-sm font-medium">Informar resultado</a>
+  </div>
+  {% endif %}
   <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
     <div class="space-y-2">
       <img
@@ -41,13 +47,17 @@
       />
     </div>
     <div class="space-y-2">
-      <label class="text-xs text-gray-400">Sala</label>
-      <input
+      <label class="text-xs text-gray-400">Sala / Plataforma</label>
+      <select
         name="room"
         required
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        placeholder="PokerStars"
-      />
+      >
+        <option value="">Selecione a sala</option>
+        {% for room in supported_rooms %}
+        <option value="{{ room }}">{{ room }}</option>
+        {% endfor %}
+      </select>
     </div>
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Buy-in (US$)</label>
@@ -105,9 +115,9 @@
       <h2 class="font-title text-xl uppercase">Minhas ofertas</h2>
       <span class="text-xs text-gray-400">{{ offers|length }} ofertas</span>
     </div>
-    <div class="grid gap-4 md:grid-cols-2">
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {% for offer in offers %}
-      <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2">
+      <div class="player-offer-card bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2" data-offer-id="{{ offer.id }}">
         <p class="text-sm text-gray-400">{{ offer.tournament.sharkscope_id or "Sala não informada" }}</p>
         <p class="text-lg font-semibold">{{ offer.tournament.nome }}</p>
         <p class="text-xs text-gray-400">
@@ -121,20 +131,12 @@
           Escrow: <span class="font-mono">{{ offer.escrow_status }}</span> ·
           Torneio: <span class="font-mono">{{ offer.tournament.status }}</span>
         </p>
-        <div class="text-xs text-gray-400 space-y-1">
-          <p class="text-gray-500">Apoiadores nesta oferta:</p>
-          {% if offer.investments %}
-            {% for inv in offer.investments %}
-            <p>
-              {{ inv.backer.nome if inv.backer else ("Usuário #" ~ inv.backer_id) }}
-              · {{ "%.2f"|format(inv.pct_comprada) }}%
-              · US$ {{ "%.2f"|format(inv.valor_investido) }}
-            </p>
-            {% endfor %}
-          {% else %}
-          <p>Sem aportes ainda.</p>
-          {% endif %}
-        </div>
+        <button
+          type="button"
+          class="player-offer-details w-full mt-2 px-3 py-2 rounded-lg border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition text-sm"
+        >
+          Ver detalhes
+        </button>
         <details class="pt-2 border-t border-white/10">
           <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar oferta</summary>
           {% if offer.investments %}
@@ -142,7 +144,11 @@
           {% endif %}
           <form action="/player/offers/{{ offer.id }}/update" method="post" class="grid gap-2 mt-2">
             <input name="tournament_name" value="{{ offer.tournament.nome }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <input name="room" value="{{ offer.tournament.plataforma }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
+            <select name="room" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm">
+              {% for room in supported_rooms %}
+              <option value="{{ room }}" {{ 'selected' if room == (offer.tournament.plataforma or offer.tournament.sharkscope_id or '') else '' }}>{{ room }}</option>
+              {% endfor %}
+            </select>
             <input name="buyin" type="number" step="0.01" min="0.01" value="{{ offer.tournament.buyin }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
             <input name="start_time" type="datetime-local" value="{{ offer.tournament.data_hora.strftime('%Y-%m-%dT%H:%M') if offer.tournament.data_hora else '' }}" class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
             <input name="markup" type="number" step="0.01" min="0.01" value="{{ offer.markup }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
@@ -150,21 +156,25 @@
             <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">Salvar edição</button>
           </form>
         </details>
-        {% if offer.investments and offer.escrow_status == "COMPLETE" and offer.tournament.status == "Aberto" %}
+        {% if offer.investments and offer.tournament.status == "Aberto" %}
         <div class="pt-2 border-t border-white/10 grid gap-2">
+          {% if offer.escrow_status == "COMPLETE" %}
           <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
-            <button
-              type="submit"
-              class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold"
-            >
+            <button type="submit" class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">
               Confirmar que vai jogar (liberar escrow)
             </button>
           </form>
+          {% elif offer.escrow_status == "COLLECTING" %}
+          <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
+            <input type="hidden" name="force_partial" value="1" />
+            <button type="submit" class="w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 text-sm font-semibold hover:bg-amber-500/30">
+              Iniciar partida (mesmo sem 100%)
+            </button>
+          </form>
+          <p class="text-xs text-amber-400/80">Porcentagem não atingida. Ao iniciar, o valor já aportado será liberado e o torneio seguirá.</p>
+          {% endif %}
           <form method="post" action="/player/offers/{{ offer.id }}/decline-play">
-            <button
-              type="submit"
-              class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-sm"
-            >
+            <button type="submit" class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-sm">
               Informar que não vai jogar (estornar apoiadores)
             </button>
           </form>
@@ -174,5 +184,81 @@
       {% endfor %}
     </div>
   </div>
+
+  <div id="playerOfferModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/70" id="playerOfferModalBackdrop"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4 overflow-y-auto">
+      <div id="playerOfferModalContent" class="bg-[#0b0b0b] border border-white/10 rounded-2xl p-6 w-full max-w-lg my-8 shadow-xl">
+        <div class="flex justify-between items-start mb-4">
+          <h3 id="playerOfferModalTitle" class="font-title text-xl uppercase text-emerald-400">Detalhes do torneio</h3>
+          <button type="button" id="playerOfferModalClose" class="text-gray-400 hover:text-white">✕</button>
+        </div>
+        <div id="playerOfferModalBody" class="space-y-4 text-sm text-gray-300"></div>
+        <div id="playerOfferModalActions" class="mt-4 pt-4 border-t border-white/10 space-y-2"></div>
+      </div>
+    </div>
+  </div>
 </section>
+
+<script>
+(function() {
+  const offersData = [
+    {% for offer in offers %}
+    {
+      id: {{ offer.id }},
+      nome: {{ offer.tournament.nome|tojson }},
+      sala: {{ (offer.tournament.plataforma or offer.tournament.sharkscope_id or "Sala não informada")|tojson }},
+      buyin: {{ offer.tournament.buyin }},
+      dataHora: {{ offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "—"|tojson }},
+      status: {{ offer.tournament.status|tojson }},
+      escrowStatus: {{ offer.escrow_status|tojson }},
+      totalPct: {{ offer.total_disponivel_pct }},
+      vendidoPct: {{ offer.vendido_pct }},
+      investments: [
+        {% for inv in offer.investments %}
+        { nome: {{ (inv.backer.nome if inv.backer else "Usuário #" ~ inv.backer_id)|tojson }}, pct: {{ inv.pct_comprada }}, amount: {{ inv.valor_investido }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+      ]
+    }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+  const modal = document.getElementById("playerOfferModal");
+  const titleEl = document.getElementById("playerOfferModalTitle");
+  const body = document.getElementById("playerOfferModalBody");
+  const actions = document.getElementById("playerOfferModalActions");
+  const closeBtn = document.getElementById("playerOfferModalClose");
+  const backdrop = document.getElementById("playerOfferModalBackdrop");
+  document.querySelectorAll(".player-offer-details").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      const card = this.closest(".player-offer-card");
+      const id = card ? parseInt(card.getAttribute("data-offer-id"), 10) : 0;
+      const offer = offersData.find(function(o) { return o.id === id; });
+      if (!offer) return;
+      if (titleEl) titleEl.textContent = offer.nome;
+      body.innerHTML = "<p class=\"text-gray-500\">Sala: " + offer.sala + "</p>" +
+        "<p class=\"font-mono\">Buy-in US$ " + offer.buyin.toFixed(2) + "</p>" +
+        "<p class=\"text-gray-500\">Data/hora: " + offer.dataHora + "</p>" +
+        "<p>Status: <span class=\"text-emerald-400\">" + offer.status + "</span> · Escrow: <span class=\"text-emerald-400\">" + offer.escrowStatus + "</span></p>" +
+        "<p>" + offer.vendidoPct + "% vendido de " + offer.totalPct + "%</p>" +
+        (offer.investments.length ? "<p class=\"text-gray-500 mt-2\">Apoiadores:</p><ul class=\"list-disc list-inside text-gray-400\">" +
+          offer.investments.map(function(i) { return "<li>" + i.nome + " · " + i.pct + "% · US$ " + Number(i.amount).toFixed(2) + "</li>"; }).join("") + "</ul>" : "<p class=\"text-gray-500\">Sem aportes ainda.</p>");
+      actions.innerHTML = "";
+      if (card) {
+        const forms = card.querySelectorAll("form");
+        forms.forEach(function(form) {
+          const clone = form.cloneNode(true);
+          clone.classList.add("w-full");
+          var btnClone = clone.querySelector("button");
+          if (btnClone) { btnClone.classList.add("w-full", "px-3", "py-2", "rounded-lg"); }
+          actions.appendChild(clone);
+        });
+      }
+      modal.classList.remove("hidden");
+    });
+  });
+  function closeModal() { modal.classList.add("hidden"); }
+  closeBtn?.addEventListener("click", closeModal);
+  backdrop?.addEventListener("click", closeModal);
+})();
+</script>
 {% endblock %}

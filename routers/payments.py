@@ -335,15 +335,29 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
 
     payload = await request.json()
     amount_usd = _extract_and_validate_amount(payload)
-    txid = _create_pending_tx(db, user.id, amount_usd)
     base_url = _resolve_base_url(request)
-    amount_brl, ptax_rate = await _convert_usd_to_brl(amount_usd)
     if not base_url.lower().startswith("https://"):
-        logger.error("MP deposit blocked: invalid public base URL '%s'", base_url)
+        logger.error("MP deposit blocked: base URL não é HTTPS: '%s'", base_url)
+        raise HTTPException(
+            status_code=400,
+            detail="Para depósitos com Mercado Pago, configure PUBLIC_BASE_URL com uma URL HTTPS (ex: https://seusite.com). Em ambiente local use um túnel (ngrok, etc.) e defina PUBLIC_BASE_URL.",
+        )
+    try:
+        amount_brl, ptax_rate = await _convert_usd_to_brl(amount_usd)
+    except Exception as exc:
+        logger.exception("Conversão USD/BRL falhou no depósito: %s", exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Não foi possível obter a cotação do dólar. Tente novamente em instantes.",
+        ) from exc
+    try:
+        txid = _create_pending_tx(db, user.id, amount_usd)
+    except Exception as exc:
+        logger.exception("Falha ao registrar transação de depósito: %s", exc)
         raise HTTPException(
             status_code=500,
-            detail="Configuração inválida para Mercado Pago. Defina PUBLIC_BASE_URL com URL HTTPS pública.",
-        )
+            detail="Não foi possível registrar o depósito. Tente novamente.",
+        ) from exc
     logger.info(
         "MP deposit started: user_id=%s txid=%s amount=%s base_url=%s",
         user.id,
@@ -360,7 +374,10 @@ async def deposit_mercadopago(request: Request, db: Session = Depends(get_db)):
         logger.info("MP preference created: txid=%s", txid)
     except Exception as exc:
         logger.exception("MP preference create failed: user_id=%s txid=%s", user.id, txid)
-        raise HTTPException(status_code=502, detail=f"Erro ao gerar checkout no Mercado Pago: {exc}") from exc
+        raise HTTPException(
+            status_code=502,
+            detail=f"Não foi possível abrir o checkout do Mercado Pago. Verifique as credenciais (MERCADOPAGO_*) e a URL pública. Detalhe: {exc!s}",
+        ) from exc
     return {
         "checkout_url": checkout_url,
         "gateway": "mercadopago",

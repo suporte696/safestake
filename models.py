@@ -123,7 +123,8 @@ class Tournament(Base):
     plataforma: Mapped[str] = mapped_column(String(80), nullable=False)
     sharkscope_link: Mapped[str | None] = mapped_column(String(255))
     buyin: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    data_hora: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Horário de início: sempre em horário de São Paulo (naive). Ex.: 19:00 = 19h em SP.
+    data_hora: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     status: Mapped[str] = mapped_column(
         Enum("Aberto", "Jogando", "Finalizado", name="tournament_status"),
         default="Aberto",
@@ -176,7 +177,8 @@ class TournamentEscrow(Base):
         nullable=False,
         default="COLLECTING",
     )
-    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Prazo limite: horário de São Paulo (naive), alinhado ao data_hora do torneio.
+    deadline_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
