@@ -280,17 +280,34 @@
             return;
           }
 
+          function resultNotificationStyle(type) {
+            if (type === "RESULT_APPROVED")
+              return { border: "border-l-4 border-l-emerald-500", icon: "✓", iconClass: "text-emerald-400" };
+            if (type === "RESULT_REJECTED")
+              return { border: "border-l-4 border-l-red-500", icon: "✗", iconClass: "text-red-400" };
+            if (type === "RESULT_SUBMITTED")
+              return { border: "border-l-4 border-l-amber-500", icon: "!", iconClass: "text-amber-400" };
+            return { border: "", icon: "", iconClass: "" };
+          }
+
           list.innerHTML = "";
           items.forEach((item) => {
+            const style = resultNotificationStyle(item.type);
             const card = document.createElement("button");
             card.type = "button";
             card.className =
-              "w-full text-left p-3 rounded-lg border border-white/10 hover:border-emerald-400 transition bg-[#0b0b0b]";
+              "w-full text-left p-3 rounded-lg border border-white/10 hover:border-emerald-400 transition bg-[#0b0b0b] " + (style.border || "");
             const created = item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-";
+            const iconHtml = style.icon
+              ? `<span class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${style.iconClass}">${style.icon}</span>`
+              : "";
             card.innerHTML = `
               <div class="flex items-center justify-between gap-2">
-                <p class="text-sm font-semibold ${item.read ? "text-white" : "text-emerald-300"}">${item.title}</p>
-                <span class="text-[10px] text-gray-500">${created}</span>
+                <div class="flex items-center gap-2 min-w-0">
+                  ${iconHtml}
+                  <p class="text-sm font-semibold truncate ${item.read ? "text-white" : "text-emerald-300"}">${item.title}</p>
+                </div>
+                <span class="text-[10px] text-gray-500 flex-shrink-0">${created}</span>
               </div>
               <p class="text-xs text-gray-300 mt-1">${item.message}</p>
             `;

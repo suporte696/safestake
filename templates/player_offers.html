@@ -135,9 +135,11 @@
           <p>Sem aportes ainda.</p>
           {% endif %}
         </div>
-        {% if not offer.investments %}
         <details class="pt-2 border-t border-white/10">
           <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar oferta</summary>
+          {% if offer.investments %}
+          <p class="text-xs text-amber-400 mt-2">Há aportes nesta oferta. O total disponível (%) não pode ser menor que o já vendido ({{ "%.2f"|format(offer.vendido_pct) }}%).</p>
+          {% endif %}
           <form action="/player/offers/{{ offer.id }}/update" method="post" class="grid gap-2 mt-2">
             <input name="tournament_name" value="{{ offer.tournament.nome }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
             <input name="room" value="{{ offer.tournament.plataforma }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
@@ -148,7 +150,6 @@
             <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">Salvar edição</button>
           </form>
         </details>
-        {% endif %}
         {% if offer.investments and offer.escrow_status == "COMPLETE" and offer.tournament.status == "Aberto" %}
         <div class="pt-2 border-t border-white/10 grid gap-2">
           <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">

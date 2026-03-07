@@ -237,7 +237,7 @@
           {% for bid in my_bids %}
           <tr class="hover:bg-white/5">
             <td class="py-3">{{ bid.tournament_name }}</td>
-            <td class="py-3 font-mono">R$ {{ "%.2f"|format(bid.amount) }}</td>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(bid.amount) }}</td>
             <td class="py-3 font-mono">{{ bid.proposed_markup }}</td>
             <td class="py-3 text-gray-400">{{ bid.created_at.strftime("%d/%m %H:%M") if bid.created_at else "-" }}</td>
             <td class="py-3">

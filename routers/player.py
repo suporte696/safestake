@@ -32,6 +32,14 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
         .order_by(StakeOffer.id.desc())
     )
     offers = db.execute(stmt).scalars().all()
+    result_stmt = (
+        select(MatchResult)
+        .where(MatchResult.player_id == user.id)
+        .order_by(MatchResult.submitted_at.desc())
+    )
+    match_results = db.execute(result_stmt).scalars().all()
+    result_by_tournament = {r.tournament_id: r for r in match_results}
+    offers_with_result = [(o, result_by_tournament[o.tournament.id]) for o in offers if o.tournament.id in result_by_tournament]
     return templates.TemplateResponse(
         "player_submit_result.html",
         {
@@ -39,6 +47,8 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
             "user": user,
             "wallet": get_wallet_summary(user),
             "offers": offers,
+            "result_by_tournament": result_by_tournament,
+            "offers_with_result": offers_with_result,
             "error": None,
             "requires_auth": True,
         },

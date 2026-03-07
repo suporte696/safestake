@@ -21,6 +21,29 @@
   </div>
   {% endif %}
 
+  {% if offers_with_result %}
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-3">
+    <h2 class="font-title text-lg uppercase text-gray-300">Status dos resultados enviados</h2>
+    <p class="text-xs text-gray-500">Evidência visual do status de revisão de cada resultado.</p>
+    <ul class="space-y-2">
+      {% for offer, result in offers_with_result %}
+      <li class="flex items-center justify-between gap-4 p-3 rounded-xl border border-white/10 bg-[#0b0b0b]">
+        <span class="text-sm text-gray-300">#{{ offer.tournament.id }} · {{ offer.tournament.nome }}</span>
+        {% if result.review_status == "PENDING" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-amber-400/50 text-amber-400 bg-amber-400/10">Pendente de revisão</span>
+        {% elif result.review_status == "APPROVED" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-emerald-400/50 text-emerald-400 bg-emerald-400/10">Aprovado</span>
+        {% elif result.review_status == "REJECTED" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-red-400/50 text-red-400 bg-red-400/10">Rejeitado</span>
+        {% else %}
+        <span class="px-3 py-1 rounded-full text-xs text-gray-400">{{ result.review_status }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
   <form method="post" action="/player/results" enctype="multipart/form-data" class="bg-black border border-white/10 rounded-2xl p-6 grid gap-4">
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Torneio</label>
@@ -31,8 +54,9 @@
       >
         <option value="">Selecione</option>
         {% for offer in offers %}
+        {% set r = result_by_tournament.get(offer.tournament.id) %}
         <option value="{{ offer.tournament.id }}">
-          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}
+          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}{% if r %} · {{ "Pendente" if r.review_status == "PENDING" else ("Aprovado" if r.review_status == "APPROVED" else "Rejeitado") }}{% endif %}
         </option>
         {% endfor %}
       </select>

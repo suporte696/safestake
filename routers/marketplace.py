@@ -6,14 +6,14 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from constants import normalize_supported_room
 from db import get_db
 from models import Investment, PixTransaction, StakeBid, StakeOffer, Tournament, TournamentEscrow, User, Wallet, WithdrawalRequest
 from routers.auth import ensure_user_not_blocked, fetch_current_user, is_user_kyc_approved
-from routers.escrow import refund_offer_escrow, release_offer_escrow_to_player, sync_offer_escrow
+from routers.escrow import q_money, refund_offer_escrow, release_offer_escrow_to_player, sync_offer_escrow
 from services.jobs import run_scheduled_jobs
 
 templates = Jinja2Templates(directory="templates")
@@ -400,9 +400,19 @@ def update_player_offer(
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
         if _is_offer_closed_by_start_time(offer):
             raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
+
+        vendido_pct = Decimal("0")
         has_investments = db.execute(select(Investment.id).where(Investment.offer_id == offer.id)).scalars().first()
         if has_investments:
-            raise HTTPException(status_code=400, detail="Oferta com aporte já recebido não pode ser editada.")
+            sum_pct = db.execute(
+                select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
+            ).scalar_one()
+            vendido_pct = q_money(Decimal(str(sum_pct or 0)))
+            if total_pct_value < vendido_pct:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Total disponível (%) não pode ser menor que o percentual já vendido ({vendido_pct}%).",
+                )
 
         tournament = offer.tournament
         tournament.nome = tournament_name.strip()
@@ -413,15 +423,17 @@ def update_player_offer(
 
         offer.markup = markup_value
         offer.total_disponivel_pct = total_pct_value
-        offer.vendido_pct = Decimal("0")
+        offer.vendido_pct = vendido_pct
 
+        total_required = q_money(((buyin_value * markup_value) * total_pct_value) / Decimal("100"))
         escrow = db.execute(select(TournamentEscrow).where(TournamentEscrow.offer_id == offer.id).with_for_update()).scalars().first()
         if escrow:
-            total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
             escrow.total_required = total_required
             escrow.deadline_at = data_hora
-            escrow.total_collected = Decimal("0")
-            escrow.status = "COLLECTING"
+            if not has_investments:
+                escrow.total_collected = Decimal("0")
+                escrow.status = "COLLECTING"
+        sync_offer_escrow(db, offer)
 
     return RedirectResponse(url="/player/offers", status_code=303)
 
