@@ -303,6 +303,8 @@
         placeholder="100.00"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
       />
+      <p id="depositRateInfo" class="text-xs text-gray-500">Cotação PTAX: -</p>
+      <p id="depositConversionInfo" class="text-xs text-emerald-300">Conversão estimada: -</p>
     </div>
 
     <button
@@ -372,6 +374,8 @@
   const closeDepositModalBtn = document.getElementById("closeDepositModal");
   const submitDepositBtn = document.getElementById("submitDeposit");
   const depositAmountInput = document.getElementById("depositAmount");
+  const depositRateInfo = document.getElementById("depositRateInfo");
+  const depositConversionInfo = document.getElementById("depositConversionInfo");
   const refreshBalanceBtn = document.getElementById("refreshBalanceBtn");
   const refreshBalanceBtnLabel = document.getElementById("refreshBalanceBtnLabel");
   const refreshBalanceBtnSpinner = document.getElementById("refreshBalanceBtnSpinner");
@@ -381,11 +385,64 @@
 
   function openDepositModal() {
     depositModal?.classList.remove("hidden");
+    updateDepositQuote();
   }
 
   function closeDepositModal() {
     depositModal?.classList.add("hidden");
   }
+
+  function formatUSD(value) {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  }
+
+  function formatBRL(value) {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
+  }
+
+  function setQuotePlaceholder() {
+    if (depositRateInfo) depositRateInfo.textContent = "Cotação PTAX: -";
+    if (depositConversionInfo) depositConversionInfo.textContent = "Conversão estimada: -";
+  }
+
+  let quoteReqSeq = 0;
+  async function updateDepositQuote() {
+    const amount = Number(depositAmountInput?.value || 0);
+    if (!amount || amount <= 0) {
+      setQuotePlaceholder();
+      return;
+    }
+    const reqId = ++quoteReqSeq;
+    try {
+      const response = await fetch(`/api/deposit/quote?amount=${encodeURIComponent(amount)}`);
+      if (!response.ok) {
+        if (reqId !== quoteReqSeq) return;
+        if (depositRateInfo) depositRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+        if (depositConversionInfo) depositConversionInfo.textContent = "Conversão estimada: -";
+        return;
+      }
+      const data = await response.json();
+      if (reqId !== quoteReqSeq) return;
+      if (depositRateInfo) {
+        depositRateInfo.textContent = `Cotação PTAX: 1 USD = ${formatBRL(data.ptax_rate)}`;
+      }
+      if (depositConversionInfo) {
+        depositConversionInfo.textContent = `Conversão estimada: ${formatUSD(data.amount_usd)} ≈ ${formatBRL(data.amount_brl)}`;
+      }
+    } catch (_error) {
+      if (reqId !== quoteReqSeq) return;
+      if (depositRateInfo) depositRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+      if (depositConversionInfo) depositConversionInfo.textContent = "Conversão estimada: -";
+    }
+  }
+
+  let quoteDebounceTimer = null;
+  depositAmountInput?.addEventListener("input", () => {
+    if (quoteDebounceTimer) {
+      clearTimeout(quoteDebounceTimer);
+    }
+    quoteDebounceTimer = setTimeout(updateDepositQuote, 250);
+  });
 
   openDepositModalBtn?.addEventListener("click", openDepositModal);
   closeDepositModalBtn?.addEventListener("click", closeDepositModal);

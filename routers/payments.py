@@ -6,7 +6,7 @@ import logging
 import hashlib
 import hmac
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -275,6 +275,37 @@ async def _convert_usd_to_brl(amount_usd: Decimal) -> tuple[Decimal, Decimal]:
     rate = await get_usd_brl_ptax_rate()
     amount_brl = _q_money(amount_usd * rate)
     return amount_brl, rate
+
+
+@router.get("/api/deposit/quote")
+async def deposit_quote(
+    request: Request,
+    amount: float = Query(..., gt=0),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para consultar a cotação.")
+    ensure_user_not_blocked(user)
+
+    try:
+        amount_usd = Decimal(str(amount))
+    except InvalidOperation as exc:
+        raise HTTPException(status_code=400, detail="Valor inválido para cotação.") from exc
+    if amount_usd <= 0:
+        raise HTTPException(status_code=400, detail="Informe um valor maior que zero.")
+
+    try:
+        amount_brl, ptax_rate = await _convert_usd_to_brl(amount_usd)
+    except Exception as exc:
+        logger.exception("Falha ao obter cotação de depósito: %s", exc)
+        raise HTTPException(status_code=502, detail="Não foi possível obter a cotação agora.") from exc
+
+    return {
+        "amount_usd": float(_q_money(amount_usd)),
+        "amount_brl": float(amount_brl),
+        "ptax_rate": float(ptax_rate),
+    }
 
 
 def _resolve_base_url(request: Request) -> str:
