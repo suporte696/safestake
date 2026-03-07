@@ -41,6 +41,7 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
     match_results = db.execute(result_stmt).scalars().all()
     result_by_tournament = {r.tournament_id: r for r in match_results}
     offers_with_result = [(o, result_by_tournament[o.tournament.id]) for o in offers if o.tournament.id in result_by_tournament]
+    embed = request.query_params.get("embed") == "1"
     return templates.TemplateResponse(
         "player_submit_result.html",
         {
@@ -52,6 +53,7 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
             "offers_with_result": offers_with_result,
             "error": None,
             "requires_auth": True,
+            "embed": embed,
         },
     )
 
@@ -65,6 +67,7 @@ async def submit_player_result(
     valor_enviado: float = Form(...),
     resultado_print: UploadFile = File(...),
     comprovante_pagamento: UploadFile = File(...),
+    embed: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = fetch_current_user(request, db)
@@ -149,7 +152,10 @@ async def submit_player_result(
         action_url="/admin/results",
     )
     db.commit()
-    return RedirectResponse(url="/player/results/new?sent=1", status_code=303)
+    url = "/player/results/new?sent=1"
+    if embed == "1":
+        url += "&embed=1"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.get("/player/calls", response_class=HTMLResponse)

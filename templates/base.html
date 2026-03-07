@@ -30,6 +30,7 @@
     </style>
   </head>
   <body class="bg-[#050505] text-white font-body min-h-screen flex flex-col">
+    {% if not embed %}
     <header class="border-b border-white/10 sticky top-0 z-40 bg-[#050505]/95 backdrop-blur">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
         <div class="flex items-center justify-between gap-4">
@@ -175,6 +176,7 @@
         </nav>
       </div>
     </header>
+    {% endif %}
 
     <main class="max-w-6xl mx-auto px-6 py-10 flex-1 w-full">
       {% block content %}{% endblock %}
@@ -182,12 +184,14 @@
 
     <div id="toastContainer" class="fixed bottom-6 right-6 z-50 space-y-3 flex flex-col-reverse"></div>
 
+    {% if not embed %}
     <footer class="border-t border-white/10 py-8 mt-auto">
       <div class="max-w-6xl mx-auto px-6 text-sm text-gray-400 flex flex-col md:flex-row items-center justify-between gap-4">
         <p>SAFE STAKE © 2026. Todos os direitos reservados.</p>
         <p class="text-emerald-400 font-title text-xs">DARK · BOLD · HIGH-TECH</p>
       </div>
     </footer>
+    {% endif %}
 
     <script>
       window.showToast = (message, type = "success") => {

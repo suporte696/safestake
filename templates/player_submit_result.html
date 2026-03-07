@@ -47,6 +47,7 @@
   {% endif %}
 
   <form method="post" action="/player/results" enctype="multipart/form-data" class="bg-black border border-white/10 rounded-2xl p-6 grid gap-4">
+    {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Torneio</label>
       <select

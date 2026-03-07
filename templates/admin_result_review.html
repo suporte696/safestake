@@ -11,12 +11,14 @@
         Aprove/rejeite resultados enviados pelos jogadores e execute a distribuição financeira.
       </p>
     </div>
+    {% if not embed %}
     <a
       href="/admin/dashboard"
       class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
     >
-      Voltar ao KYC
+      Voltar ao painel
     </a>
+    {% endif %}
   </div>
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
@@ -68,6 +70,7 @@
         </div>
         {% if result.review_status == "UNDER_REVIEW" %}
         <form method="post" action="/admin/results/{{ result.id }}/update-values" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 flex flex-wrap items-end gap-4">
+          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
           <p class="text-amber-300 text-sm w-full">Editar valores antes de aprovar (em revisão):</p>
           <div>
             <label class="text-xs text-gray-400 block mb-1">Valor prêmio (US$)</label>
@@ -92,11 +95,13 @@
 
         <div class="flex flex-wrap gap-3">
           <form method="post" action="/admin/results/{{ result.id }}/approve">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
             <button class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold">
               Aprovar e distribuir
             </button>
           </form>
           <form method="post" action="/admin/results/{{ result.id }}/reject" class="flex gap-2">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
             <input
               type="text"
               name="reason"

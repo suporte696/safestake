@@ -633,6 +633,7 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
                         }
                     )
 
+    embed = request.query_params.get("embed") == "1"
     return templates.TemplateResponse(
         "admin_result_review.html",
         {
@@ -644,6 +645,7 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
             "distribution_by_result": distribution_by_result,
             "supporters_by_result": supporters_by_result,
             "requires_auth": True,
+            "embed": embed,
         },
     )
 
@@ -654,6 +656,7 @@ def update_result_values(
     request: Request,
     valor_premio: float = Form(...),
     valor_enviado: float = Form(...),
+    embed: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = fetch_current_user(request, db)
@@ -677,11 +680,19 @@ def update_result_values(
     result.valor_premio = premio
     result.valor_enviado = enviado
     db.commit()
-    return RedirectResponse(url="/admin/results?updated=1", status_code=303)
+    url = "/admin/results?updated=1"
+    if embed == "1":
+        url += "&embed=1"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/admin/results/{result_id}/approve")
-def approve_result(result_id: int, request: Request, db: Session = Depends(get_db)):
+def approve_result(
+    result_id: int,
+    request: Request,
+    embed: str = Form(""),
+    db: Session = Depends(get_db),
+):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
@@ -803,7 +814,10 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
             action_url="/dashboard",
         )
 
-    return RedirectResponse(url="/admin/results", status_code=303)
+    url = "/admin/results"
+    if embed == "1":
+        url += "?embed=1"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.post("/admin/results/{result_id}/reject")
@@ -811,6 +825,7 @@ def reject_result(
     result_id: int,
     request: Request,
     reason: str = Form(""),
+    embed: str = Form(""),
     db: Session = Depends(get_db),
 ):
     user = fetch_current_user(request, db)
@@ -839,7 +854,10 @@ def reject_result(
             action_url="/player/results/new",
         )
         db.commit()
-    return RedirectResponse(url="/admin/results", status_code=303)
+    url = "/admin/results"
+    if embed == "1":
+        url += "?embed=1"
+    return RedirectResponse(url=url, status_code=303)
 
 
 @router.get("/admin/calls", response_class=HTMLResponse)
