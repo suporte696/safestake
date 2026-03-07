@@ -24,7 +24,7 @@
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium border border-white/10 border-b-0 -mb-px text-white transition" data-player-tab="criar">Criar oferta</button>
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition" data-player-tab="ofertas">Minhas ofertas</button>
-    <a href="/player/results/new" class="px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition">Enviar resultado</a>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition" data-player-tab="resultado">Enviar resultado</button>
   </div>
 
   <div id="player-tab-criar" class="player-tab-panel space-y-6">
@@ -184,6 +184,12 @@
         {% endif %}
       </div>
       {% endfor %}
+    </div>
+  </div>
+
+  <div id="player-tab-resultado" class="player-tab-panel hidden space-y-4">
+    <div class="bg-black border border-white/10 rounded-2xl overflow-hidden">
+      <iframe src="/player/results/new" class="w-full min-h-[70vh] border-0 rounded-2xl" title="Enviar resultado"></iframe>
     </div>
   </div>
 

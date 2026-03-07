@@ -15,14 +15,10 @@
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="acerto">Acerto de Contas</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="saques">Solicitações de saque</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="kyc">KYC</button>
-    <a href="/admin/results" class="px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition">Resultados</a>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="resultados">Resultados</button>
   </div>
 
   <div id="tab-inicio" class="admin-tab-panel space-y-8">
-  <div class="flex flex-wrap gap-3">
-    <a href="/admin/results" class="inline-flex px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm">Revisão de resultados</a>
-  </div>
-
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Alterar Senha do Admin</h2>
@@ -468,6 +464,12 @@
     </div>
     {% endif %}
   </div>
+  </div>
+
+  <div id="tab-resultados" class="admin-tab-panel hidden space-y-8">
+    <div class="bg-black border border-white/10 rounded-2xl overflow-hidden">
+      <iframe src="/admin/results" class="w-full min-h-[70vh] border-0 rounded-2xl" title="Revisão de resultados"></iframe>
+    </div>
   </div>
 
 </section>
