@@ -11,6 +11,7 @@
 
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-tab="inicio">Início</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="novo-torneio">Novo torneio</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="torneios">Torneios ativos</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="acerto">Acerto de Contas</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="saques">Solicitações de saque</button>
@@ -20,10 +21,13 @@
 
   <div id="tab-inicio" class="admin-tab-panel space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
-    <div class="flex items-center justify-between">
-      <h2 class="font-title text-xl uppercase">Alterar Senha do Admin</h2>
-      <span class="text-xs text-gray-400">Segurança da conta</span>
+    <h2 class="font-title text-xl uppercase">Meu perfil</h2>
+    <p class="text-sm text-gray-400">Dados da conta admin: nome e senha.</p>
+    {% if profile_success %}
+    <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+      Perfil atualizado com sucesso.
     </div>
+    {% endif %}
     {% if password_error %}
     <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
       {{ password_error }}
@@ -34,7 +38,25 @@
       Senha atualizada com sucesso.
     </div>
     {% endif %}
-    <form method="post" action="/admin/password/update" class="grid gap-4 md:grid-cols-3">
+    <form method="post" action="/admin/profile/update" class="grid gap-4 md:grid-cols-2">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Nome</label>
+        <input
+          type="text"
+          name="nome"
+          value="{{ user.nome if user else '' }}"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2 flex items-end">
+        <button type="submit" class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30">
+          Salvar nome
+        </button>
+      </div>
+    </form>
+    <form method="post" action="/admin/password/update" class="grid gap-4 md:grid-cols-3 pt-4 border-t border-white/10">
+      <p class="md:col-span-3 text-xs text-gray-500 font-title uppercase">Alterar senha</p>
       <div class="space-y-2">
         <label class="text-xs text-gray-400">Senha atual</label>
         <input
@@ -50,7 +72,7 @@
           type="password"
           name="new_password"
           required
-          placeholder="8+ caracteres, letras e números"
+          placeholder="8+ caracteres"
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
         />
       </div>
@@ -64,16 +86,26 @@
         />
       </div>
       <div class="md:col-span-3">
-        <button
-          type="submit"
-          class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
-        >
-          Atualizar Senha
+        <button type="submit" class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30">
+          Atualizar senha
         </button>
       </div>
     </form>
+    {% if user and getattr(user, 'profile_photo_url', None) %}
+    <div class="pt-4 border-t border-white/10">
+      <p class="text-xs text-gray-500 font-title uppercase mb-2">Foto de perfil</p>
+      <img src="{{ user.profile_photo_url }}" alt="Foto de perfil" class="w-20 h-20 rounded-full object-cover border border-white/10" />
+    </div>
+    {% endif %}
+    <form method="post" action="/admin/profile/photo" enctype="multipart/form-data" class="pt-2">
+      <label class="text-xs text-gray-400 block mb-2">Adicionar ou trocar foto</label>
+      <input type="file" name="photo" accept="image/*" class="text-sm text-gray-400" />
+      <button type="submit" class="mt-2 px-4 py-2 rounded-lg border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm">Enviar foto</button>
+    </form>
+  </div>
   </div>
 
+  <div id="tab-novo-torneio" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Criar Novo Torneio/Oferta</h2>
@@ -337,76 +369,54 @@
     {% if not withdrawal_requests %}
     <p class="text-sm text-gray-500">Sem solicitações registradas.</p>
     {% else %}
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-300">
-        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-          <tr>
-            <th class="py-3">Usuário</th>
-            <th class="py-3">Valor (US$)</th>
-            <th class="py-3">Valor (R$)</th>
-            <th class="py-3">PIX destino</th>
-            <th class="py-3">Status</th>
-            <th class="py-3">Obs.</th>
-            <th class="py-3">Data</th>
-            <th class="py-3 text-right">Ação</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          {% for wr in withdrawal_requests %}
-          <tr>
-            <td class="py-3">
-              {{ wr.user.nome if wr.user else ("Usuário #" ~ wr.user_id) }}
-            </td>
-            <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
-            <td class="py-3 font-mono text-xs text-gray-400">R$ {{ "%.2f"|format((wr.amount|float) * ptax_rate) }}</td>
-            <td class="py-3 font-mono text-xs">
-              <span class="copy-pix-value text-gray-400" data-pix="{{ wr.pix_key }}" title="Copiar PIX (valor completo)">{{ pix_masked_by_wr.get(wr.id, wr.pix_key) }}</span>
-              <button type="button" class="copy-pix-btn ml-1 inline-flex align-middle text-gray-400 hover:text-emerald-400 transition" data-pix="{{ wr.pix_key }}" title="Copiar chave PIX" aria-label="Copiar">📋</button>
-            </td>
-            <td class="py-3">
-              {% if wr.status == "PENDING" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/40 text-amber-300">Pendente</span>
-              {% elif wr.status == "APPROVED" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400">Aprovado</span>
-              {% else %}
-              <span class="px-3 py-1 rounded-full text-xs border border-red-500/40 text-red-300">Rejeitado</span>
-              {% endif %}
-            </td>
-            <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
-            <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m/%Y %H:%M") if wr.created_at else "-" }}</td>
-            <td class="py-3 text-right">
-              {% if wr.status == "PENDING" %}
-              <details class="inline-block text-left">
-                <summary class="cursor-pointer px-3 py-1 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-xs">
-                  Revisar
-                </summary>
-                <div class="mt-2 p-3 border border-white/10 rounded-xl bg-[#0b0b0b] min-w-[280px] space-y-3">
-                  <div class="flex rounded-lg bg-white/5 p-1 border border-white/10 withdraw-switch-group">
-                    <button type="button" class="withdraw-switch-approve flex-1 px-3 py-2 rounded-md text-xs font-semibold bg-emerald-400 text-black">Aprovar</button>
-                    <button type="button" class="withdraw-switch-reject flex-1 px-3 py-2 rounded-md text-xs text-gray-400 hover:text-white">Rejeitar</button>
-                  </div>
-                  <div class="withdraw-form-approve">
-                    <form method="post" action="/admin/withdrawals/{{ wr.id }}/approve" class="space-y-2">
-                      <input name="note" placeholder="Obs. opcional (aprovação)" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
-                      <button type="submit" class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-xs font-semibold">Confirmar aprovação</button>
-                    </form>
-                  </div>
-                  <div class="withdraw-form-reject hidden">
-                    <form method="post" action="/admin/withdrawals/{{ wr.id }}/reject" class="space-y-2">
-                      <input name="note" placeholder="Motivo da rejeição" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
-                      <button type="submit" class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-xs font-semibold">Confirmar rejeição</button>
-                    </form>
-                  </div>
-                </div>
-              </details>
-              {% else %}
-              -
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {% for wr in withdrawal_requests %}
+      <article class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-3">
+        <div class="flex items-start justify-between gap-2">
+          <div>
+            <p class="font-semibold text-white">{{ wr.user.nome if wr.user else ("Usuário #" ~ wr.user_id) }}</p>
+            <p class="text-xs text-gray-500">{{ wr.created_at.strftime("%d/%m/%Y %H:%M") if wr.created_at else "-" }}</p>
+          </div>
+          {% if wr.status == "PENDING" %}
+          <span class="px-2.5 py-1 rounded-full text-xs border border-amber-400/40 text-amber-300 shrink-0">Pendente</span>
+          {% elif wr.status == "APPROVED" %}
+          <span class="px-2.5 py-1 rounded-full text-xs border border-emerald-400/40 text-emerald-400 shrink-0">Aprovado</span>
+          {% else %}
+          <span class="px-2.5 py-1 rounded-full text-xs border border-red-500/40 text-red-300 shrink-0">Rejeitado</span>
+          {% endif %}
+        </div>
+        <div class="space-y-1 text-sm">
+          <p class="font-mono text-emerald-400">US$ {{ "%.2f"|format(wr.amount) }} <span class="text-gray-500 text-xs">(R$ {{ "%.2f"|format((wr.amount|float) * ptax_rate) }})</span></p>
+          <p class="text-xs text-gray-400 flex items-center gap-1">
+            PIX: <span class="copy-pix-value font-mono text-gray-300" data-pix="{{ wr.pix_key }}" title="Copiar">{{ pix_masked_by_wr.get(wr.id, wr.pix_key) }}</span>
+            <button type="button" class="copy-pix-btn text-gray-500 hover:text-emerald-400 transition" data-pix="{{ wr.pix_key }}" title="Copiar chave PIX" aria-label="Copiar">📋</button>
+          </p>
+          {% if wr.admin_note %}
+          <p class="text-xs text-gray-500 pt-1">Obs: {{ wr.admin_note }}</p>
+          {% endif %}
+        </div>
+        {% if wr.status == "PENDING" %}
+        <div class="pt-2 border-t border-white/10 space-y-2">
+          <div class="flex rounded-lg bg-white/5 p-1 border border-white/10 withdraw-switch-group">
+            <button type="button" class="withdraw-switch-approve flex-1 px-3 py-2 rounded-md text-xs font-semibold bg-emerald-400 text-black">Aprovar</button>
+            <button type="button" class="withdraw-switch-reject flex-1 px-3 py-2 rounded-md text-xs text-gray-400 hover:text-white">Rejeitar</button>
+          </div>
+          <div class="withdraw-form-approve">
+            <form method="post" action="/admin/withdrawals/{{ wr.id }}/approve" class="space-y-2">
+              <input name="note" placeholder="Obs. opcional (aprovação)" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
+              <button type="submit" class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-xs font-semibold">Confirmar aprovação</button>
+            </form>
+          </div>
+          <div class="withdraw-form-reject hidden">
+            <form method="post" action="/admin/withdrawals/{{ wr.id }}/reject" class="space-y-2">
+              <input name="note" placeholder="Motivo da rejeição" class="w-full bg-black border border-white/10 rounded-lg px-3 py-2 text-xs" />
+              <button type="submit" class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-xs font-semibold">Confirmar rejeição</button>
+            </form>
+          </div>
+        </div>
+        {% endif %}
+      </article>
+      {% endfor %}
     </div>
     {% endif %}
   </div>
@@ -589,10 +599,9 @@
             const acertoPanel = document.getElementById("tab-acerto");
             if (acertoPanel) acertoPanel.classList.remove("hidden");
             const tid = link.getAttribute("data-tournament-id");
-            const finalized = link.getAttribute("data-finalized") === "1";
-            if (tid && finalized) {
+            if (tid) {
               const splitEl = document.getElementById("split-" + tid);
-              if (splitEl && splitEl.classList.contains("hidden")) splitEl.classList.remove("hidden");
+              if (splitEl) splitEl.classList.remove("hidden");
             }
           });
         });
@@ -619,11 +628,11 @@
   });
 
   document.querySelectorAll(".withdraw-switch-group").forEach((group) => {
-    const details = group.closest("details");
+    const card = group.closest("article") || group.closest("details") || group.parentElement;
     const approveBtn = group.querySelector(".withdraw-switch-approve");
     const rejectBtn = group.querySelector(".withdraw-switch-reject");
-    const formApprove = details?.querySelector(".withdraw-form-approve");
-    const formReject = details?.querySelector(".withdraw-form-reject");
+    const formApprove = card?.querySelector(".withdraw-form-approve");
+    const formReject = card?.querySelector(".withdraw-form-reject");
     approveBtn?.addEventListener("click", () => {
       approveBtn.classList.add("bg-emerald-400", "text-black");
       approveBtn.classList.remove("text-gray-400");

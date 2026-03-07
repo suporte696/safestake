@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import and_, or_, select
@@ -137,6 +137,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
     password_error = request.query_params.get("pwd_error")
     password_success = request.query_params.get("pwd_success")
+    profile_success = request.query_params.get("profile_success")
     withdrawal_requests = db.execute(
         select(WithdrawalRequest)
         .options(joinedload(WithdrawalRequest.user), joinedload(WithdrawalRequest.reviewed_by_user))
@@ -183,6 +184,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "withdrawal_requests": withdrawal_requests,
             "password_error": password_error,
             "password_success": password_success,
+            "profile_success": profile_success,
             "supported_rooms": sorted(SUPPORTED_ROOMS),
             "ptax_rate": ptax_rate_float,
             "pix_masked_by_wr": pix_masked_by_wr,
@@ -279,6 +281,47 @@ def reject_withdrawal(
     db.commit()
 
     return RedirectResponse(url="/admin/dashboard", status_code=303)
+
+
+@router.post("/admin/profile/update")
+def update_admin_profile(
+    request: Request,
+    nome: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+    nome = (nome or "").strip()
+    if not nome:
+        return RedirectResponse(url="/admin/dashboard?pwd_error=" + quote_plus("Nome não pode ser vazio."), status_code=303)
+    user.nome = nome[:120]
+    db.commit()
+    return RedirectResponse(url="/admin/dashboard?profile_success=1", status_code=303)
+
+
+@router.post("/admin/profile/photo")
+async def update_admin_profile_photo(
+    request: Request,
+    photo: UploadFile = File(None),
+    db: Session = Depends(get_db),
+):
+    from services.storage import save_profile_photo
+
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    ensure_admin_user(user)
+    if not photo or not getattr(photo, "filename", None) or not photo.filename.strip():
+        return RedirectResponse(url="/admin/dashboard?pwd_error=" + quote_plus("Selecione uma imagem."), status_code=303)
+    try:
+        url = await save_profile_photo(photo, user_id=user.id)
+    except ValueError as e:
+        return RedirectResponse(url="/admin/dashboard?pwd_error=" + quote_plus(str(e)), status_code=303)
+    user.profile_photo_url = url
+    db.commit()
+    return RedirectResponse(url="/admin/dashboard?profile_success=1", status_code=303)
 
 
 @router.post("/admin/password/update")
@@ -394,7 +437,7 @@ def create_admin_tournament_offer(
     )
     db.commit()
 
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?tab=novo-torneio", status_code=303)
 
 
 @router.post("/api/tournaments/{tournament_id}/close")
@@ -471,29 +514,29 @@ def mark_investment_paid(investment_id: int, request: Request, db: Session = Dep
         raise HTTPException(status_code=401, detail="Faça login para continuar.")
     ensure_admin_user(user)
 
-    with db.begin():
-        stmt = (
-            select(Investment)
-            .where(Investment.id == investment_id)
-            .options(joinedload(Investment.backer))
-            .with_for_update()
-        )
-        investment = db.execute(stmt).scalars().first()
-        if not investment:
-            raise HTTPException(status_code=404, detail="Investimento não encontrado.")
-        if investment.payout_status == "PAID":
-            return {"success": True, "investment_id": investment_id, "payout_status": "PAID"}
+    stmt = (
+        select(Investment)
+        .where(Investment.id == investment_id)
+        .options(joinedload(Investment.backer))
+        .with_for_update()
+    )
+    investment = db.execute(stmt).scalars().first()
+    if not investment:
+        raise HTTPException(status_code=404, detail="Investimento não encontrado.")
+    if investment.payout_status == "PAID":
+        return {"success": True, "investment_id": investment_id, "payout_status": "PAID"}
 
-        valor_investido = q_money(Decimal(str(investment.valor_investido or 0)))
-        lucro = q_money(Decimal(str(investment.lucro_recebido or 0)))
-        total_a_creditar = valor_investido + lucro
+    valor_investido = q_money(Decimal(str(investment.valor_investido or 0)))
+    lucro = q_money(Decimal(str(investment.lucro_recebido or 0)))
+    total_a_creditar = valor_investido + lucro
 
-        backer_wallet = get_wallet_for_update(db, investment.backer_id)
-        backer_wallet.saldo_disponivel = q_money(Decimal(str(backer_wallet.saldo_disponivel or 0)) + total_a_creditar)
-        em_jogo = Decimal(str(backer_wallet.saldo_em_jogo or 0))
-        backer_wallet.saldo_em_jogo = q_money(max(Decimal("0"), em_jogo - valor_investido))
+    backer_wallet = get_wallet_for_update(db, investment.backer_id)
+    backer_wallet.saldo_disponivel = q_money(Decimal(str(backer_wallet.saldo_disponivel or 0)) + total_a_creditar)
+    em_jogo = Decimal(str(backer_wallet.saldo_em_jogo or 0))
+    backer_wallet.saldo_em_jogo = q_money(max(Decimal("0"), em_jogo - valor_investido))
 
-        investment.payout_status = "PAID"
+    investment.payout_status = "PAID"
+    db.commit()
 
     return {"success": True, "investment_id": investment_id, "payout_status": "PAID"}
 

@@ -390,7 +390,7 @@ def update_player_offer(
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
     if not is_user_kyc_approved(user, db):
@@ -421,52 +421,52 @@ def update_player_offer(
         except ValueError:
             data_hora = None
 
-    with db.begin():
-        offer_stmt = (
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
-            .options(joinedload(StakeOffer.tournament))
-            .with_for_update()
-        )
-        offer = db.execute(offer_stmt).scalars().first()
-        if not offer or not offer.tournament:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        if _is_offer_closed_by_start_time(offer):
-            raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
+        .options(joinedload(StakeOffer.tournament))
+        .with_for_update()
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer or not offer.tournament:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    if _is_offer_closed_by_start_time(offer):
+        raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
 
-        vendido_pct = Decimal("0")
-        has_investments = db.execute(select(Investment.id).where(Investment.offer_id == offer.id)).scalars().first()
-        if has_investments:
-            sum_pct = db.execute(
-                select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
-            ).scalar_one()
-            vendido_pct = q_money(Decimal(str(sum_pct or 0)))
-            if total_pct_value < vendido_pct:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Total disponível (%) não pode ser menor que o percentual já vendido ({vendido_pct}%).",
-                )
+    vendido_pct = Decimal("0")
+    has_investments = db.execute(select(Investment.id).where(Investment.offer_id == offer.id)).scalars().first()
+    if has_investments:
+        sum_pct = db.execute(
+            select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
+        ).scalar_one()
+        vendido_pct = q_money(Decimal(str(sum_pct or 0)))
+        if total_pct_value < vendido_pct:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Total disponível (%) não pode ser menor que o percentual já vendido ({vendido_pct}%).",
+            )
 
-        tournament = offer.tournament
-        tournament.nome = tournament_name.strip()
-        tournament.sharkscope_id = normalized_room
-        tournament.plataforma = normalized_room
-        tournament.buyin = buyin_value
-        tournament.data_hora = data_hora
+    tournament = offer.tournament
+    tournament.nome = tournament_name.strip()
+    tournament.sharkscope_id = normalized_room
+    tournament.plataforma = normalized_room
+    tournament.buyin = buyin_value
+    tournament.data_hora = data_hora
 
-        offer.markup = markup_value
-        offer.total_disponivel_pct = total_pct_value
-        offer.vendido_pct = vendido_pct
+    offer.markup = markup_value
+    offer.total_disponivel_pct = total_pct_value
+    offer.vendido_pct = vendido_pct
 
-        total_required = q_money(((buyin_value * markup_value) * total_pct_value) / Decimal("100"))
-        escrow = db.execute(select(TournamentEscrow).where(TournamentEscrow.offer_id == offer.id).with_for_update()).scalars().first()
-        if escrow:
-            escrow.total_required = total_required
-            escrow.deadline_at = data_hora
-            if not has_investments:
-                escrow.total_collected = Decimal("0")
-                escrow.status = "COLLECTING"
-        sync_offer_escrow(db, offer)
+    total_required = q_money(((buyin_value * markup_value) * total_pct_value) / Decimal("100"))
+    escrow = db.execute(select(TournamentEscrow).where(TournamentEscrow.offer_id == offer.id).with_for_update()).scalars().first()
+    if escrow:
+        escrow.total_required = total_required
+        escrow.deadline_at = data_hora
+        if not has_investments:
+            escrow.total_collected = Decimal("0")
+            escrow.status = "COLLECTING"
+    sync_offer_escrow(db, offer)
+    db.commit()
 
     return RedirectResponse(url="/player/offers", status_code=303)
 

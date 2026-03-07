@@ -123,12 +123,11 @@
           <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
             {{ user.nome[:1]|upper }}
           </div>
-          <a
-            href="{% if user.tipo == 'admin' %}{% if request.url.path.startswith('/player') %}/player/offers{% else %}/admin/dashboard{% endif %}{% elif user.tipo == 'jogador' %}/player/offers{% else %}/dashboard{% endif %}"
-            class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm truncate max-w-[140px] sm:max-w-none"
+          <span
+            class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 text-sm truncate max-w-[140px] sm:max-w-none inline-block cursor-default"
           >
             Olá, {{ user.nome }}
-          </a>
+          </span>
           <a
             href="/logout"
             class="px-3 sm:px-4 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition text-sm"

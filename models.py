@@ -33,6 +33,7 @@ class User(Base):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     blocked_reason: Mapped[str | None] = mapped_column(String(255))
     blocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    profile_photo_url: Mapped[str | None] = mapped_column(String(512))
 
     wallet: Mapped["Wallet"] = relationship(back_populates="user", uselist=False)
     crypto_transactions: Mapped[list["CryptoTransaction"]] = relationship(back_populates="user")

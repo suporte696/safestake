@@ -10,6 +10,7 @@ UPLOADS_DIR = STATIC_DIR / "uploads"
 TMP_DIR = UPLOADS_DIR / "tmp"
 KYC_DIR = UPLOADS_DIR / "kyc"
 RESULTS_DIR = UPLOADS_DIR / "results"
+PROFILE_DIR = UPLOADS_DIR / "profile"
 MAX_UPLOAD_SIZE_BYTES = 8 * 1024 * 1024  # 8 MB
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 ALLOWED_DOCUMENT_EXTENSIONS = ALLOWED_IMAGE_EXTENSIONS | {".pdf"}
@@ -19,6 +20,7 @@ def _ensure_directories() -> None:
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     KYC_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    PROFILE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _get_extension(filename: str) -> str:
@@ -85,6 +87,25 @@ async def save_match_file(upload: UploadFile, *, user_id: int, kind: str) -> str
         raise ValueError("Arquivo excede o limite de 8MB.")
     filename = f"user_{user_id}_{kind}_{secrets.token_hex(12)}{ext}"
     destination = RESULTS_DIR / filename
+    destination.write_bytes(content)
+    await upload.close()
+    return _safe_relative_path(destination)
+
+
+async def save_profile_photo(upload: UploadFile, *, user_id: int) -> str:
+    if not upload or not upload.filename:
+        raise ValueError("Arquivo não enviado.")
+    ext = _get_extension(upload.filename)
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise ValueError("Use uma imagem (JPG, PNG ou WebP).")
+    _ensure_directories()
+    content = await upload.read()
+    if not content:
+        raise ValueError("Arquivo vazio.")
+    if len(content) > MAX_UPLOAD_SIZE_BYTES:
+        raise ValueError("Arquivo excede o limite de 8MB.")
+    filename = f"user_{user_id}_profile_{secrets.token_hex(8)}{ext}"
+    destination = PROFILE_DIR / filename
     destination.write_bytes(content)
     await upload.close()
     return _safe_relative_path(destination)
