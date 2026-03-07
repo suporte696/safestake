@@ -10,12 +10,12 @@
   </div>
 
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium border border-white/10 border-b-0 -mb-px text-white transition" data-tab="inicio">Início</button>
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="torneios">Torneios ativos</button>
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="acerto">Acerto de Contas</button>
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="saques">Solicitações de saque</button>
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="kyc">KYC</button>
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white transition" data-tab="resultados">Resultados</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-tab="inicio">Início</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="torneios">Torneios ativos</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="acerto">Acerto de Contas</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="saques">Solicitações de saque</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="kyc">KYC</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="resultados">Resultados</button>
   </div>
 
   <div id="tab-inicio" class="admin-tab-panel space-y-8">
@@ -549,11 +549,11 @@
     const btn = document.querySelector(".admin-tab[data-tab=\"" + tab + "\"]");
     if (!btn) return;
     document.querySelectorAll(".admin-tab").forEach((b) => {
-      b.classList.add("text-gray-400");
-      b.classList.remove("border-white/10", "border-b-0", "text-white", "font-medium");
+      b.classList.add("text-gray-400", "border-transparent");
+      b.classList.remove("border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium", "bg-emerald-400", "text-black", "border-emerald-400");
     });
-    btn.classList.remove("text-gray-400");
-    btn.classList.add("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
+    btn.classList.remove("text-gray-400", "border-transparent");
+    btn.classList.add("border", "border-emerald-400", "border-b-0", "-mb-px", "bg-emerald-400", "text-black", "font-medium");
     document.querySelectorAll(".admin-tab-panel").forEach((p) => p.classList.add("hidden"));
     const panel = document.getElementById("tab-" + tab);
     if (panel) panel.classList.remove("hidden");
@@ -577,13 +577,13 @@
             e.preventDefault();
             document.getElementById("tournamentDetailsModal").classList.add("hidden");
             document.querySelectorAll(".admin-tab").forEach((b) => {
-              b.classList.remove("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
-              b.classList.add("text-gray-400");
+              b.classList.remove("border", "border-emerald-400", "border-b-0", "-mb-px", "text-white", "font-medium", "bg-emerald-400", "text-black");
+              b.classList.add("text-gray-400", "border-transparent");
             });
             const acertoTab = document.querySelector(".admin-tab[data-tab=\"acerto\"]");
             if (acertoTab) {
-              acertoTab.classList.remove("text-gray-400");
-              acertoTab.classList.add("border", "border-white/10", "border-b-0", "-mb-px", "text-white", "font-medium");
+              acertoTab.classList.remove("text-gray-400", "border-transparent");
+              acertoTab.classList.add("border", "border-emerald-400", "border-b-0", "-mb-px", "bg-emerald-400", "text-black", "font-medium");
             }
             document.querySelectorAll(".admin-tab-panel").forEach((p) => p.classList.add("hidden"));
             const acertoPanel = document.getElementById("tab-acerto");

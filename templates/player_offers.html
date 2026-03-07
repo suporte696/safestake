@@ -22,9 +22,9 @@
   {% endif %}
 
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium border border-white/10 border-b-0 -mb-px text-white transition" data-player-tab="criar">Criar oferta</button>
-    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition" data-player-tab="ofertas">Minhas ofertas</button>
-    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition" data-player-tab="resultado">Enviar resultado</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-player-tab="criar">Criar oferta</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="ofertas">Minhas ofertas</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="resultado">Enviar resultado</button>
   </div>
 
   <div id="player-tab-criar" class="player-tab-panel space-y-6">
@@ -286,16 +286,14 @@
   closeBtn && closeBtn.addEventListener("click", closeModal);
   backdrop && backdrop.addEventListener("click", closeModal);
 
-  var activeTabClasses = "text-white border border-white/10 border-b-0 -mb-px";
-  var inactiveTabClasses = "text-gray-400 border-b border-transparent";
   function switchPlayerTab(tabKey) {
     document.querySelectorAll(".player-tab").forEach(function(b) {
       var isActive = b.getAttribute("data-player-tab") === tabKey;
-      b.classList.remove("text-white", "border", "border-white/10", "border-b-0", "-mb-px", "text-gray-400", "border-b", "border-transparent");
+      b.classList.remove("text-white", "border", "border-white/10", "border-b-0", "-mb-px", "text-gray-400", "border-b", "border-transparent", "bg-emerald-400", "text-black", "border-emerald-400");
       if (isActive) {
-        b.classList.add("text-white", "border", "border-white/10", "border-b-0", "-mb-px");
+        b.classList.add("bg-emerald-400", "text-black", "border", "border-emerald-400", "border-b-0", "-mb-px");
       } else {
-        b.classList.add("text-gray-400", "border-b", "border-transparent");
+        b.classList.add("text-gray-400", "border", "border-transparent", "border-b-0");
       }
     });
     document.querySelectorAll(".player-tab-panel").forEach(function(p) {
