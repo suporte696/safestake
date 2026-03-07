@@ -63,17 +63,11 @@
             </div>
             <span class="text-white/20 hidden xl:inline">|</span>
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/admin/dashboard">Painel Admin</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/admin/results">Resultados</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/offers">Painel Jogador</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/results/new">Enviar Resultado</a>
             {% elif user and user.tipo == "apoiador" %}
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/dashboard">Dashboard</a>
             {% elif user and user.tipo == "jogador" %}
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/offers">Painel Jogador</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/results/new">Enviar Resultado</a>
             {% else %}
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
             {% endif %}
@@ -170,17 +164,11 @@
             </div>
           </div>
           <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
-          <a href="/admin/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Admin</a>
-          <a href="/admin/results" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Resultados</a>
-          <a href="/player/offers" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Jogador</a>
-          <a href="/player/results/new" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Enviar Resultado</a>
           {% elif user and user.tipo == "apoiador" %}
           <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
           <a href="/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Dashboard</a>
           {% elif user and user.tipo == "jogador" %}
           <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
-          <a href="/player/offers" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Jogador</a>
-          <a href="/player/results/new" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Enviar Resultado</a>
           {% else %}
           <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
           {% endif %}

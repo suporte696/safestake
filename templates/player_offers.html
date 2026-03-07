@@ -3,7 +3,7 @@
 {% block title %}Painel do Jogador | SAFE STAKE{% endblock %}
 
 {% block content %}
-<section class="space-y-10">
+<section class="space-y-6">
   {% if request.query_params.get("playing") == "1" %}
   <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
     Escrow liberado para o jogador e torneio marcado como "Jogando".
@@ -20,18 +20,18 @@
     <a href="/player/results/new" class="px-4 py-2 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:bg-amber-500/30 transition text-sm font-medium">Informar resultado</a>
   </div>
   {% endif %}
-  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-    <div class="space-y-2">
-      <img
-        src="/static/img/safestake-01.svg"
-        alt="SAFE STAKE"
-        class="h-6"
-      />
-      <h1 class="font-title text-3xl uppercase">Criar nova oferta</h1>
-      <p class="text-gray-300">Publique seus torneios em USD e defina o markup.</p>
-    </div>
+
+  <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium border border-white/10 border-b-0 -mb-px text-white transition" data-player-tab="criar">Criar oferta</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition" data-player-tab="ofertas">Minhas ofertas</button>
+    <a href="/player/results/new" class="px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border-b border-transparent transition">Enviar resultado</a>
   </div>
 
+  <div id="player-tab-criar" class="player-tab-panel space-y-6">
+  <div class="space-y-2">
+    <h1 class="font-title text-2xl uppercase">Criar nova oferta</h1>
+    <p class="text-gray-300 text-sm">Publique seus torneios em USD e defina o markup.</p>
+  </div>
   <form
     action="/player/offers"
     method="post"
@@ -109,13 +109,14 @@
       </button>
     </div>
   </form>
+  </div>
 
-  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+  <div id="player-tab-ofertas" class="player-tab-panel hidden space-y-4">
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Minhas ofertas</h2>
       <span class="text-xs text-gray-400">{{ offers|length }} ofertas</span>
     </div>
-    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+    <div id="player-offers-list" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {% for offer in offers %}
       <div class="player-offer-card bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2" data-offer-id="{{ offer.id }}">
         <p class="text-sm text-gray-400">{{ offer.tournament.sharkscope_id or "Sala não informada" }}</p>
@@ -134,6 +135,7 @@
         <button
           type="button"
           class="player-offer-details w-full mt-2 px-3 py-2 rounded-lg border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition text-sm"
+          data-offer-id="{{ offer.id }}"
         >
           Ver detalhes
         </button>
@@ -209,7 +211,7 @@
       nome: {{ offer.tournament.nome|tojson }},
       sala: {{ (offer.tournament.plataforma or offer.tournament.sharkscope_id or "Sala não informada")|tojson }},
       buyin: {{ offer.tournament.buyin }},
-      dataHora: {{ offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "—"|tojson }},
+      dataHora: {{ (offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "—")|tojson }},
       status: {{ offer.tournament.status|tojson }},
       escrowStatus: {{ offer.escrow_status|tojson }},
       totalPct: {{ offer.total_disponivel_pct }},
@@ -228,37 +230,79 @@
   const actions = document.getElementById("playerOfferModalActions");
   const closeBtn = document.getElementById("playerOfferModalClose");
   const backdrop = document.getElementById("playerOfferModalBackdrop");
-  document.querySelectorAll(".player-offer-details").forEach(function(btn) {
-    btn.addEventListener("click", function() {
-      const card = this.closest(".player-offer-card");
-      const id = card ? parseInt(card.getAttribute("data-offer-id"), 10) : 0;
-      const offer = offersData.find(function(o) { return o.id === id; });
-      if (!offer) return;
-      if (titleEl) titleEl.textContent = offer.nome;
-      body.innerHTML = "<p class=\"text-gray-500\">Sala: " + offer.sala + "</p>" +
-        "<p class=\"font-mono\">Buy-in US$ " + offer.buyin.toFixed(2) + "</p>" +
-        "<p class=\"text-gray-500\">Data/hora: " + offer.dataHora + "</p>" +
-        "<p>Status: <span class=\"text-emerald-400\">" + offer.status + "</span> · Escrow: <span class=\"text-emerald-400\">" + offer.escrowStatus + "</span></p>" +
-        "<p>" + offer.vendidoPct + "% vendido de " + offer.totalPct + "%</p>" +
-        (offer.investments.length ? "<p class=\"text-gray-500 mt-2\">Apoiadores:</p><ul class=\"list-disc list-inside text-gray-400\">" +
-          offer.investments.map(function(i) { return "<li>" + i.nome + " · " + i.pct + "% · US$ " + Number(i.amount).toFixed(2) + "</li>"; }).join("") + "</ul>" : "<p class=\"text-gray-500\">Sem aportes ainda.</p>");
-      actions.innerHTML = "";
-      if (card) {
-        const forms = card.querySelectorAll("form");
-        forms.forEach(function(form) {
-          const clone = form.cloneNode(true);
-          clone.classList.add("w-full");
-          var btnClone = clone.querySelector("button");
-          if (btnClone) { btnClone.classList.add("w-full", "px-3", "py-2", "rounded-lg"); }
-          actions.appendChild(clone);
-        });
-      }
+
+  function openDetailsModal(offerId) {
+    const id = parseInt(offerId, 10);
+    const offer = offersData.find(function(o) { return o.id === id; });
+    if (!offer) return;
+    if (titleEl) titleEl.textContent = offer.nome;
+    body.innerHTML = "<p class=\"text-gray-500\">Sala: " + (offer.sala || "") + "</p>" +
+      "<p class=\"font-mono\">Buy-in US$ " + (Number(offer.buyin).toFixed(2)) + "</p>" +
+      "<p class=\"text-gray-500\">Data/hora: " + (offer.dataHora || "—") + "</p>" +
+      "<p>Status: <span class=\"text-emerald-400\">" + (offer.status || "") + "</span> · Escrow: <span class=\"text-emerald-400\">" + (offer.escrowStatus || "") + "</span></p>" +
+      "<p>" + (offer.vendidoPct || 0) + "% vendido de " + (offer.totalPct || 0) + "%</p>" +
+      (offer.investments && offer.investments.length ? "<p class=\"text-gray-500 mt-2\">Apoiadores:</p><ul class=\"list-disc list-inside text-gray-400\">" +
+        offer.investments.map(function(i) { return "<li>" + (i.nome || "") + " · " + (i.pct || 0) + "% · US$ " + (Number(i.amount).toFixed(2)) + "</li>"; }).join("") + "</ul>" : "<p class=\"text-gray-500\">Sem aportes ainda.</p>");
+    actions.innerHTML = "";
+    const card = document.querySelector(".player-offer-card[data-offer-id=\"" + id + "\"]");
+    if (card) {
+      const forms = card.querySelectorAll("form");
+      forms.forEach(function(form) {
+        const clone = form.cloneNode(true);
+        clone.classList.add("w-full");
+        var btnClone = clone.querySelector("button[type=submit]");
+        if (btnClone) { btnClone.classList.add("w-full", "px-3", "py-2", "rounded-lg"); }
+        actions.appendChild(clone);
+      });
+    }
+    if (modal) {
       modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+    }
+  }
+  function closeModal() {
+    if (modal) {
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+    }
+  }
+
+  var listEl = document.getElementById("player-offers-list");
+  if (listEl) {
+    listEl.addEventListener("click", function(e) {
+      var btn = e.target.closest(".player-offer-details");
+      if (!btn) return;
+      e.preventDefault();
+      var offerId = btn.getAttribute("data-offer-id");
+      if (offerId) openDetailsModal(offerId);
+    });
+  }
+  closeBtn && closeBtn.addEventListener("click", closeModal);
+  backdrop && backdrop.addEventListener("click", closeModal);
+
+  var activeTabClasses = "text-white border border-white/10 border-b-0 -mb-px";
+  var inactiveTabClasses = "text-gray-400 border-b border-transparent";
+  function switchPlayerTab(tabKey) {
+    document.querySelectorAll(".player-tab").forEach(function(b) {
+      var isActive = b.getAttribute("data-player-tab") === tabKey;
+      b.classList.remove("text-white", "border", "border-white/10", "border-b-0", "-mb-px", "text-gray-400", "border-b", "border-transparent");
+      if (isActive) {
+        b.classList.add("text-white", "border", "border-white/10", "border-b-0", "-mb-px");
+      } else {
+        b.classList.add("text-gray-400", "border-b", "border-transparent");
+      }
+    });
+    document.querySelectorAll(".player-tab-panel").forEach(function(p) {
+      p.classList.add("hidden");
+    });
+    var panel = document.getElementById("player-tab-" + tabKey);
+    if (panel) panel.classList.remove("hidden");
+  }
+  document.querySelectorAll(".player-tab").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      switchPlayerTab(btn.getAttribute("data-player-tab"));
     });
   });
-  function closeModal() { modal.classList.add("hidden"); }
-  closeBtn?.addEventListener("click", closeModal);
-  backdrop?.addEventListener("click", closeModal);
 })();
 </script>
 {% endblock %}
