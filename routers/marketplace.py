@@ -351,7 +351,7 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
         .options(joinedload(StakeOffer.investments).joinedload(Investment.backer))
         .order_by(StakeOffer.id.desc())
     )
-    offers = db.execute(stmt).scalars().all()
+    offers = db.execute(stmt).unique().scalars().all()
     tournament_ids_jogando = [o.tournament_id for o in offers if o.tournament and o.tournament.status == "Jogando"]
     has_result_ids: set[int] = set()
     if tournament_ids_jogando:

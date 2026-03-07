@@ -66,7 +66,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         .options(joinedload(Tournament.offers))
         .order_by(Tournament.data_hora.asc().nulls_last(), Tournament.id.desc())
     )
-    active_tournaments = db.execute(active_tournaments_stmt).scalars().all()
+    active_tournaments = db.execute(active_tournaments_stmt).unique().scalars().all()
     active_ids = [item.id for item in active_tournaments]
 
     can_close_tournament: dict[int, bool] = {}
@@ -422,7 +422,7 @@ async def close_tournament(tournament_id: int, request: Request, db: Session = D
         .options(joinedload(Tournament.offers))
         .with_for_update()
     )
-    tournament = db.execute(tournament_stmt).scalars().first()
+    tournament = db.execute(tournament_stmt).unique().scalars().first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Torneio não encontrado.")
     meta_atingida = any(getattr(o, "escrow_status", None) == "COMPLETE" for o in (tournament.offers or []))
