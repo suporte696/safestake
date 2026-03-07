@@ -425,7 +425,7 @@ def update_player_offer(
         select(StakeOffer)
         .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
         .options(joinedload(StakeOffer.tournament))
-        .with_for_update()
+        .with_for_update(of=StakeOffer)
     )
     offer = db.execute(offer_stmt).scalars().first()
     if not offer or not offer.tournament:
@@ -491,7 +491,7 @@ def confirm_player_will_play(
             select(StakeOffer)
             .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
             .options(joinedload(StakeOffer.tournament))
-            .with_for_update()
+            .with_for_update(of=StakeOffer)
         ).scalars().first()
         if not offer:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")
@@ -526,7 +526,7 @@ def decline_player_will_play(
             select(StakeOffer)
             .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
             .options(joinedload(StakeOffer.tournament))
-            .with_for_update()
+            .with_for_update(of=StakeOffer)
         ).scalars().first()
         if not offer:
             raise HTTPException(status_code=404, detail="Oferta não encontrada.")

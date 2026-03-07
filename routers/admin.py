@@ -463,7 +463,7 @@ async def close_tournament(tournament_id: int, request: Request, db: Session = D
         select(Tournament)
         .where(Tournament.id == tournament_id)
         .options(joinedload(Tournament.offers))
-        .with_for_update()
+        .with_for_update(of=Tournament)
     )
     tournament = db.execute(tournament_stmt).unique().scalars().first()
     if not tournament:
@@ -518,7 +518,7 @@ def mark_investment_paid(investment_id: int, request: Request, db: Session = Dep
         select(Investment)
         .where(Investment.id == investment_id)
         .options(joinedload(Investment.backer))
-        .with_for_update()
+        .with_for_update(of=Investment)
     )
     investment = db.execute(stmt).scalars().first()
     if not investment:
@@ -746,7 +746,7 @@ def approve_result(
             select(MatchResult)
             .where(MatchResult.id == result_id)
             .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
-            .with_for_update()
+            .with_for_update(of=MatchResult)
         )
         result = db.execute(result_stmt).scalars().first()
         if not result:
@@ -763,7 +763,7 @@ def approve_result(
             .join(StakeOffer, Investment.offer_id == StakeOffer.id)
             .where(StakeOffer.tournament_id == result.tournament_id)
             .options(joinedload(Investment.backer), joinedload(Investment.offer))
-            .with_for_update()
+            .with_for_update(of=Investment)
         )
         investments = db.execute(investment_stmt).scalars().all()
 
