@@ -335,7 +335,8 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    # Admin tem perfil jogador implícito (nested); não é necessário tipo=jogador no banco
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/", status_code=303)
 
     wallet_summary = None

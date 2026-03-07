@@ -22,7 +22,8 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    # Admin tem perfil jogador implícito (nested); não é necessário tipo=jogador no banco
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/dashboard", status_code=303)
 
     stmt = (
@@ -69,7 +70,8 @@ async def submit_player_result(
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    # Admin tem perfil jogador implícito (nested)
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/dashboard", status_code=303)
     if not is_user_kyc_approved(user, db):
         raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin.")

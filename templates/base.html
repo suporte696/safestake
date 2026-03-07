@@ -30,56 +30,67 @@
     </style>
   </head>
   <body class="bg-[#050505] text-white font-body min-h-screen flex flex-col">
-    <header class="border-b border-white/10">
-      <div class="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <img
-            src="/static/img/safestake-text.png"
-            alt="SAFE STAKE"
-            class="h-8 hidden sm:block"
-          />
-        </div>
-
-        <nav class="hidden md:flex items-center gap-6 text-sm text-gray-300">
-          {% if user and user.tipo == "admin" %}
-          <div class="flex items-center gap-3 mr-2 pl-4 border-l border-white/10">
-            <span class="text-xs uppercase tracking-widest text-gray-500 font-title">Ver como</span>
-            <div class="flex rounded-xl bg-black/40 border border-emerald-400/30 p-1 ring-1 ring-white/5">
-              <a
-                href="/admin/dashboard"
-                class="admin-context-link px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black shadow-lg shadow-emerald-400/30{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
-              >
-                Admin
-              </a>
-              <a
-                href="/player/offers"
-                class="admin-context-link px-5 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black shadow-lg shadow-emerald-400/30{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
-              >
-                Jogador
-              </a>
-            </div>
+    <header class="border-b border-white/10 sticky top-0 z-40 bg-[#050505]/95 backdrop-blur">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3 min-w-0">
+            <img
+              src="/static/img/safestake-text.png"
+              alt="SAFE STAKE"
+              class="h-7 sm:h-8 hidden sm:block flex-shrink-0"
+            />
           </div>
-          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
-          {% if request.url.path.startswith('/admin') %}
-          <a class="hover:text-emerald-400 transition" href="/admin/dashboard">Painel Admin</a>
-          <a class="hover:text-emerald-400 transition" href="/admin/results">Resultados</a>
-          {% else %}
-          <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
-          <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
-          {% endif %}
-          {% elif user and user.tipo == "apoiador" %}
-          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
-          <a class="hover:text-emerald-400 transition" href="/dashboard">Dashboard</a>
-          {% elif user and user.tipo == "jogador" %}
-          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
-          <a class="hover:text-emerald-400 transition" href="/player/offers">Painel Jogador</a>
-          <a class="hover:text-emerald-400 transition" href="/player/results/new">Enviar Resultado</a>
-          {% else %}
-          <a class="hover:text-emerald-400 transition" href="/">Marketplace</a>
-          {% endif %}
-        </nav>
 
-        <div class="flex items-center gap-4">
+          <!-- Desktop nav -->
+          <nav class="hidden lg:flex items-center gap-4 xl:gap-6 text-sm text-gray-300 flex-wrap justify-center">
+            {% if user and user.tipo == "admin" %}
+            <div class="flex items-center gap-2 shrink-0">
+              <span class="text-[10px] xl:text-xs uppercase tracking-widest text-gray-500 font-title whitespace-nowrap">Ver como</span>
+              <div class="flex rounded-lg bg-black/40 border border-emerald-400/30 p-0.5">
+                <a
+                  href="/admin/dashboard"
+                  class="px-3 xl:px-4 py-2 rounded-md text-xs xl:text-sm font-semibold transition-all {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
+                >
+                  Admin
+                </a>
+                <a
+                  href="/player/offers"
+                  class="px-3 xl:px-4 py-2 rounded-md text-xs xl:text-sm font-semibold transition-all {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
+                >
+                  Jogador
+                </a>
+              </div>
+            </div>
+            <span class="text-white/20 hidden xl:inline">|</span>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/admin/dashboard">Painel Admin</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/admin/results">Resultados</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/offers">Painel Jogador</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/results/new">Enviar Resultado</a>
+            {% elif user and user.tipo == "apoiador" %}
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/dashboard">Dashboard</a>
+            {% elif user and user.tipo == "jogador" %}
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/offers">Painel Jogador</a>
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/player/results/new">Enviar Resultado</a>
+            {% else %}
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
+            {% endif %}
+          </nav>
+
+          <!-- Mobile menu button -->
+          <button
+            id="navMenuBtn"
+            type="button"
+            class="lg:hidden w-10 h-10 rounded-lg border border-white/20 hover:border-emerald-400 flex items-center justify-center text-gray-300"
+            aria-label="Abrir menu"
+          >
+            <svg id="navMenuIcon" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            <svg id="navCloseIcon" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+
+          <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
           {% if user %}
           <div class="relative">
             <button
@@ -118,32 +129,62 @@
             {{ user.nome[:1]|upper }}
           </div>
           <a
-            href="{% if user.tipo == 'admin' %}/admin/dashboard{% elif user.tipo == 'jogador' %}/player/offers{% else %}/dashboard{% endif %}"
-            class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+            href="{% if user.tipo == 'admin' %}{% if request.url.path.startswith('/player') %}/player/offers{% else %}/admin/dashboard{% endif %}{% elif user.tipo == 'jogador' %}/player/offers{% else %}/dashboard{% endif %}"
+            class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm truncate max-w-[140px] sm:max-w-none"
           >
             Olá, {{ user.nome }}
           </a>
           <a
             href="/logout"
-            class="px-4 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition"
+            class="px-3 sm:px-4 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition text-sm"
           >
             Sair
           </a>
           {% else %}
           <a
             href="/login"
-            class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+            class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition text-sm"
           >
             Entrar
           </a>
           <a
             href="/register"
-            class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+            class="px-3 sm:px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30 text-sm"
           >
             Criar Conta
           </a>
           {% endif %}
+          </div>
         </div>
+      </div>
+
+      <!-- Mobile menu panel -->
+      <div id="navMobilePanel" class="lg:hidden hidden border-t border-white/10 bg-black/98 backdrop-blur">
+        <nav class="px-4 py-4 flex flex-col gap-2 text-sm">
+          {% if user and user.tipo == "admin" %}
+          <div class="mb-2 pb-2 border-b border-white/10">
+            <p class="text-xs uppercase tracking-widest text-gray-500 font-title mb-2">Ver como</p>
+            <div class="flex gap-2">
+              <a href="/admin/dashboard" class="flex-1 py-2.5 rounded-lg text-center font-semibold border {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black border-emerald-400{% else %}border-white/20 text-gray-300{% endif %}">Admin</a>
+              <a href="/player/offers" class="flex-1 py-2.5 rounded-lg text-center font-semibold border {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black border-emerald-400{% else %}border-white/20 text-gray-300{% endif %}">Jogador</a>
+            </div>
+          </div>
+          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
+          <a href="/admin/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Admin</a>
+          <a href="/admin/results" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Resultados</a>
+          <a href="/player/offers" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Jogador</a>
+          <a href="/player/results/new" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Enviar Resultado</a>
+          {% elif user and user.tipo == "apoiador" %}
+          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
+          <a href="/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Dashboard</a>
+          {% elif user and user.tipo == "jogador" %}
+          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
+          <a href="/player/offers" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel Jogador</a>
+          <a href="/player/results/new" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Enviar Resultado</a>
+          {% else %}
+          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
+          {% endif %}
+        </nav>
       </div>
     </header>
 
@@ -255,6 +296,29 @@
       };
     </script>
 
+    <script>
+      (function() {
+        var btn = document.getElementById("navMenuBtn");
+        var panel = document.getElementById("navMobilePanel");
+        var openIcon = document.getElementById("navMenuIcon");
+        var closeIcon = document.getElementById("navCloseIcon");
+        if (btn && panel) {
+          btn.addEventListener("click", function() {
+            var isOpen = !panel.classList.contains("hidden");
+            panel.classList.toggle("hidden", isOpen);
+            if (openIcon) openIcon.classList.toggle("hidden", !isOpen);
+            if (closeIcon) closeIcon.classList.toggle("hidden", isOpen);
+          });
+          panel.querySelectorAll("a").forEach(function(a) {
+            a.addEventListener("click", function() {
+              panel.classList.add("hidden");
+              if (openIcon) openIcon.classList.remove("hidden");
+              if (closeIcon) closeIcon.classList.add("hidden");
+            });
+          });
+        }
+      })();
+    </script>
     {% if requires_auth and not user %}
     <script>
       window.location.href = "/login";

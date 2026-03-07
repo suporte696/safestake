@@ -205,37 +205,37 @@ def approve_withdrawal(
         return RedirectResponse(url="/login", status_code=303)
     ensure_admin_user(user)
 
-    with db.begin():
-        wr = db.execute(
-            select(WithdrawalRequest).where(WithdrawalRequest.id == withdrawal_id)
-        ).scalars().first()
-        if not wr:
-            raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
-        if wr.status != "PENDING":
-            raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
+    wr = db.execute(
+        select(WithdrawalRequest).where(WithdrawalRequest.id == withdrawal_id)
+    ).scalars().first()
+    if not wr:
+        raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
+    if wr.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
 
-        wallet = get_wallet_for_update(db, wr.user_id)
-        amount = q_money(Decimal(str(wr.amount or 0)))
-        saldo_disp = q_money(Decimal(str(wallet.saldo_disponivel or 0)))
-        if amount <= 0:
-            raise HTTPException(status_code=400, detail="Valor de saque inválido na solicitação.")
-        if saldo_disp < amount:
-            raise HTTPException(status_code=400, detail="O usuário não possui saldo suficiente para aprovar este saque.")
+    wallet = get_wallet_for_update(db, wr.user_id)
+    amount = q_money(Decimal(str(wr.amount or 0)))
+    saldo_disp = q_money(Decimal(str(wallet.saldo_disponivel or 0)))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Valor de saque inválido na solicitação.")
+    if saldo_disp < amount:
+        raise HTTPException(status_code=400, detail="O usuário não possui saldo suficiente para aprovar este saque.")
 
-        wallet.saldo_disponivel = q_money(saldo_disp - amount)
-        wr.status = "APPROVED"
-        wr.admin_note = note.strip()[:255] if note else None
-        wr.reviewed_by = user.id
-        wr.reviewed_at = datetime.now(timezone.utc)
+    wallet.saldo_disponivel = q_money(saldo_disp - amount)
+    wr.status = "APPROVED"
+    wr.admin_note = note.strip()[:255] if note else None
+    wr.reviewed_by = user.id
+    wr.reviewed_at = datetime.now(timezone.utc)
 
-        create_notification(
-            db,
-            user_id=wr.user_id,
-            n_type="WITHDRAWAL_APPROVED",
-            title="Saque aprovado",
-            message=f"Sua solicitação de saque de US$ {amount:.2f} foi aprovada.",
-            action_url="/dashboard",
-        )
+    create_notification(
+        db,
+        user_id=wr.user_id,
+        n_type="WITHDRAWAL_APPROVED",
+        title="Saque aprovado",
+        message=f"Sua solicitação de saque de US$ {amount:.2f} foi aprovada.",
+        action_url="/dashboard",
+    )
+    db.commit()
 
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
@@ -252,31 +252,31 @@ def reject_withdrawal(
         return RedirectResponse(url="/login", status_code=303)
     ensure_admin_user(user)
 
-    with db.begin():
-        wr = db.execute(
-            select(WithdrawalRequest).where(WithdrawalRequest.id == withdrawal_id)
-        ).scalars().first()
-        if not wr:
-            raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
-        if wr.status != "PENDING":
-            raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
+    wr = db.execute(
+        select(WithdrawalRequest).where(WithdrawalRequest.id == withdrawal_id)
+    ).scalars().first()
+    if not wr:
+        raise HTTPException(status_code=404, detail="Solicitação de saque não encontrada.")
+    if wr.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Esta solicitação já foi revisada anteriormente.")
 
-        wr.status = "REJECTED"
-        wr.admin_note = note.strip()[:255] if note else None
-        wr.reviewed_by = user.id
-        wr.reviewed_at = datetime.now(timezone.utc)
+    wr.status = "REJECTED"
+    wr.admin_note = note.strip()[:255] if note else None
+    wr.reviewed_by = user.id
+    wr.reviewed_at = datetime.now(timezone.utc)
 
-        create_notification(
-            db,
-            user_id=wr.user_id,
-            n_type="WITHDRAWAL_REJECTED",
-            title="Saque rejeitado",
-            message=(
-                "Sua solicitação de saque foi rejeitada."
-                + (f" Motivo: {wr.admin_note}" if wr.admin_note else "")
-            ),
-            action_url="/dashboard",
-        )
+    create_notification(
+        db,
+        user_id=wr.user_id,
+        n_type="WITHDRAWAL_REJECTED",
+        title="Saque rejeitado",
+        message=(
+            "Sua solicitação de saque foi rejeitada."
+            + (f" Motivo: {wr.admin_note}" if wr.admin_note else "")
+        ),
+        action_url="/dashboard",
+    )
+    db.commit()
 
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
