@@ -269,7 +269,7 @@ class MatchResult(Base):
     print_url: Mapped[str | None] = mapped_column(String(255))
     comprovante_url: Mapped[str | None] = mapped_column(String(255))
     review_status: Mapped[str] = mapped_column(
-        Enum("PENDING", "APPROVED", "REJECTED", name="match_result_review_status"),
+        Enum("PENDING", "UNDER_REVIEW", "APPROVED", "REJECTED", name="match_result_review_status"),
         nullable=False,
         default="PENDING",
     )

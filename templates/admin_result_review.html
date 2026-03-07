@@ -21,12 +21,12 @@
 
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
     <div class="flex items-center justify-between">
-      <h2 class="font-title text-xl uppercase">Pendentes</h2>
-      <span class="text-xs text-gray-400">{{ pending_results|length }} aguardando revisão</span>
+      <h2 class="font-title text-xl uppercase">Em revisão</h2>
+      <span class="text-xs text-gray-400">{{ pending_results|length }} aguardando decisão</span>
     </div>
 
     {% if not pending_results %}
-    <p class="text-sm text-gray-500">Sem resultados pendentes no momento.</p>
+    <p class="text-sm text-gray-500">Sem resultados em revisão no momento.</p>
     {% else %}
     <div class="grid gap-4">
       {% for result in pending_results %}
@@ -66,7 +66,7 @@
             <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_enviado) }}</p>
           </div>
         </div>
-        {% if result.review_status == "PENDING" %}
+        {% if result.review_status == "UNDER_REVIEW" %}
         <form method="post" action="/admin/results/{{ result.id }}/update-values" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 flex flex-wrap items-end gap-4">
           <p class="text-amber-300 text-sm w-full">Editar valores antes de aprovar (em revisão):</p>
           <div>
@@ -127,8 +127,8 @@
             <p class="text-sm font-semibold">{{ result.tournament.nome }}</p>
             <p class="text-xs text-gray-500">#{{ result.tournament.id }} · {{ result.tournament.plataforma or "-" }} · Jogador: {{ result.player.nome }}</p>
           </div>
-          <span class="text-xs px-3 py-1 rounded-full border {% if result.review_status == 'APPROVED' %}border-emerald-400/50 text-emerald-400{% elif result.review_status == 'PENDING' %}border-amber-400/50 text-amber-400{% else %}border-red-500/50 text-red-300{% endif %}">
-            {{ "Em revisão" if result.review_status == "PENDING" else ("Aprovado" if result.review_status == "APPROVED" else "Rejeitado") }}
+          <span class="text-xs px-3 py-1 rounded-full border {% if result.review_status == 'APPROVED' %}border-emerald-400/50 text-emerald-400{% elif result.review_status == 'UNDER_REVIEW' %}border-amber-400/50 text-amber-400{% elif result.review_status == 'PENDING' %}border-blue-400/50 text-blue-300{% else %}border-red-500/50 text-red-300{% endif %}">
+            {{ "Em revisão" if result.review_status == "UNDER_REVIEW" else ("Pendente" if result.review_status == "PENDING" else ("Aprovado" if result.review_status == "APPROVED" else "Rejeitado")) }}
           </span>
         </div>
 

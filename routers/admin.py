@@ -573,7 +573,7 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
 
     pending_stmt = (
         select(MatchResult)
-        .where(MatchResult.review_status == "PENDING")
+        .where(MatchResult.review_status == "UNDER_REVIEW")
         .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
         .order_by(MatchResult.submitted_at.asc(), MatchResult.id.asc())
     )
@@ -666,7 +666,7 @@ def update_result_values(
     ).scalars().first()
     if not result:
         raise HTTPException(status_code=404, detail="Resultado não encontrado.")
-    if result.review_status != "PENDING":
+    if result.review_status != "UNDER_REVIEW":
         raise HTTPException(status_code=400, detail="Só é possível editar valores enquanto o resultado estiver em revisão.")
 
     premio = q_money(Decimal(str(valor_premio)))
@@ -697,7 +697,7 @@ def approve_result(result_id: int, request: Request, db: Session = Depends(get_d
         result = db.execute(result_stmt).scalars().first()
         if not result:
             raise HTTPException(status_code=404, detail="Resultado não encontrado.")
-        if result.review_status != "PENDING":
+        if result.review_status != "UNDER_REVIEW":
             raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
 
         total_sent = q_money(Decimal(str(result.valor_enviado)))
@@ -820,7 +820,7 @@ def reject_result(
     stmt = select(MatchResult).where(MatchResult.id == result_id)
     result = db.execute(stmt).scalars().first()
     if result:
-        if result.review_status != "PENDING":
+        if result.review_status != "UNDER_REVIEW":
             raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
         result.review_status = "REJECTED"
         result.admin_verified = False

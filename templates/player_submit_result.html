@@ -6,12 +6,12 @@
 <section class="max-w-3xl mx-auto space-y-6">
   <div class="space-y-2">
     <h1 class="font-title text-3xl uppercase">Enviar Resultado da Partida</h1>
-    <p class="text-gray-400 text-sm">Após o envio, o resultado fica pendente de revisão do admin (você pode corrigir antes da aprovação).</p>
+    <p class="text-gray-400 text-sm">Após o envio, o resultado fica em revisão do admin (você pode corrigir antes da aprovação).</p>
   </div>
 
   {% if request.query_params.get("sent") == "1" %}
   <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
-    Resultado enviado com sucesso e marcado como pendente de revisão.
+    Resultado enviado com sucesso e marcado como em revisão.
   </div>
   {% endif %}
 
@@ -29,8 +29,10 @@
       {% for offer, result in offers_with_result %}
       <li class="flex items-center justify-between gap-4 p-3 rounded-xl border border-white/10 bg-[#0b0b0b]">
         <span class="text-sm text-gray-300">#{{ offer.tournament.id }} · {{ offer.tournament.nome }}</span>
-        {% if result.review_status == "PENDING" %}
+        {% if result.review_status == "UNDER_REVIEW" %}
         <span class="px-3 py-1 rounded-full text-xs font-medium border border-amber-400/50 text-amber-400 bg-amber-400/10">Em revisão</span>
+        {% elif result.review_status == "PENDING" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-blue-400/50 text-blue-300 bg-blue-500/10">Pendente</span>
         {% elif result.review_status == "APPROVED" %}
         <span class="px-3 py-1 rounded-full text-xs font-medium border border-emerald-400/50 text-emerald-400 bg-emerald-400/10">Aprovado</span>
         {% elif result.review_status == "REJECTED" %}
@@ -56,7 +58,7 @@
         {% for offer in offers %}
         {% set r = result_by_tournament.get(offer.tournament.id) %}
         <option value="{{ offer.tournament.id }}">
-          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}{% if r %} · {{ "Em revisão" if r.review_status == "PENDING" else ("Aprovado" if r.review_status == "APPROVED" else "Rejeitado") }}{% endif %}
+          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}{% if r %} · {{ "Em revisão" if r.review_status == "UNDER_REVIEW" else ("Pendente" if r.review_status == "PENDING" else ("Aprovado" if r.review_status == "APPROVED" else "Rejeitado")) }}{% endif %}
         </option>
         {% endfor %}
       </select>

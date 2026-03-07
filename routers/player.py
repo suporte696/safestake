@@ -116,7 +116,7 @@ async def submit_player_result(
         existing_result.valor_enviado = enviado_value
         existing_result.print_url = print_url
         existing_result.comprovante_url = comprovante_url
-        existing_result.review_status = "PENDING"
+        existing_result.review_status = "UNDER_REVIEW"
         existing_result.admin_verified = False
     else:
         db.add(
@@ -128,7 +128,7 @@ async def submit_player_result(
                 valor_enviado=enviado_value,
                 print_url=print_url,
                 comprovante_url=comprovante_url,
-                review_status="PENDING",
+                review_status="UNDER_REVIEW",
                 admin_verified=False,
             )
         )
@@ -139,7 +139,7 @@ async def submit_player_result(
     notify_all_admins(
         db,
         n_type="RESULT_SUBMITTED",
-        title="Novo resultado pendente",
+        title="Novo resultado em revisão",
         message=(
             f"{user.nome} enviou/atualizou resultado do torneio #{offer.tournament_id} "
             f"com valor enviado de US$ {enviado_value:.2f}."

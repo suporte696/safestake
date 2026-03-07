@@ -97,18 +97,28 @@ if __name__ == "__main__":
 
 ---
 
-### [ ] Item 31 — Status "Em revisão" para informes de ganho (opcional)
+### [x] Item 31 — Status "Em revisão" para informes de ganho (obrigatório neste deploy)
 
-**Quando:** Só se for usar um valor de enum **diferente** de `PENDING` para “Em revisão”. Hoje `match_results.review_status` já tem `PENDING`, que pode ser exibido na UI como “Em revisão” **sem** alterar o banco.
+**Quando:** Neste deploy, o cliente pediu separar semanticamente `PENDING` e `UNDER_REVIEW`. Então a migração do enum é **obrigatória**.
 
-**Se quiser um valor próprio** (ex.: `UNDER_REVIEW`) no enum:
+**Rodar no PostgreSQL:**
 
 ```sql
 -- PostgreSQL (enum já existe: match_result_review_status)
 ALTER TYPE match_result_review_status ADD VALUE IF NOT EXISTS 'UNDER_REVIEW';
+
+UPDATE match_results
+SET review_status = 'UNDER_REVIEW'
+WHERE review_status = 'PENDING';
 ```
 
-**Atenção:** Em PostgreSQL, `ADD VALUE` não pode ser revertido facilmente. Preferir usar `PENDING` com label “Em revisão” na interface para evitar migração.
+**Atenção:** Em PostgreSQL, `ADD VALUE` não pode ser revertido facilmente.
+
+**Script Python (recomendado):**
+
+```bash
+python scripts/migrate_match_result_under_review.py
+```
 
 ---
 
@@ -117,7 +127,7 @@ ALTER TYPE match_result_review_status ADD VALUE IF NOT EXISTS 'UNDER_REVIEW';
 | Item | Obrigatório? | O que rodar |
 |------|--------------|-------------|
 | 24 (Saldo Pendente) | Só se usar coluna em `wallets` | `ALTER TABLE wallets ADD COLUMN saldo_pendente ...` ou script Python acima |
-| 31 (Em revisão) | Não (usar PENDING) | Só alterar enum se quiser valor `UNDER_REVIEW` |
+| 31 (Em revisão) | Sim (neste deploy) | `ALTER TYPE ... ADD VALUE 'UNDER_REVIEW'` + `UPDATE match_results ...` (ou `python scripts/migrate_match_result_under_review.py`) |
 
 ---
 
