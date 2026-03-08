@@ -91,10 +91,10 @@
         </button>
       </div>
     </form>
-    {% if user and user.profile_photo_url %}
+    {% if user_profile_photo_url %}
     <div class="pt-4 border-t border-white/10">
       <p class="text-xs text-gray-500 font-title uppercase mb-2">Foto de perfil</p>
-      <img src="{{ user.profile_photo_url }}" alt="Foto de perfil" class="w-20 h-20 rounded-full object-cover border border-white/10" />
+      <img src="{{ user_profile_photo_url }}" alt="Foto de perfil" class="w-20 h-20 rounded-full object-cover border border-white/10" />
     </div>
     {% endif %}
     <form method="post" action="/admin/profile/photo" enctype="multipart/form-data" class="pt-2">
@@ -194,6 +194,11 @@
 
   <div id="tab-torneios" class="admin-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    {% if tournament_created %}
+    <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+      Torneio criado com sucesso. Ele aparece na lista abaixo e na Home para apoiadores.
+    </div>
+    {% endif %}
     <div class="flex items-center justify-between">
       <h2 class="font-title text-xl uppercase">Torneios ativos</h2>
       <span class="text-xs text-gray-400">{{ active_tournaments|length }} em andamento</span>

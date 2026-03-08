@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
-from models import Investment, MatchResult, StakeOffer, TournamentEscrow, Wallet
+from models import Investment, MatchResult, StakeOffer, Tournament, TournamentEscrow, Wallet
 from routers.auth import ensure_admin_user, fetch_current_user
 
 router = APIRouter()
@@ -189,24 +189,24 @@ def escrow_status(offer_id: int, request: Request, db: Session = Depends(get_db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login.")
 
-    with db.begin():
-        auto_refund_expired_escrows(db)
-        offer = db.execute(
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id)
-            .options(joinedload(StakeOffer.tournament))
-            .with_for_update(of=StakeOffer)
+    auto_refund_expired_escrows(db)
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id)
+        .with_for_update(of=StakeOffer)
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    if user.tipo != "admin" and user.id not in {offer.player_id}:
+        has_investment = db.execute(
+            select(Investment.id).where(Investment.offer_id == offer.id, Investment.backer_id == user.id)
         ).scalars().first()
-        if not offer:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        if user.tipo != "admin" and user.id not in {offer.player_id}:
-            has_investment = db.execute(
-                select(Investment.id).where(Investment.offer_id == offer.id, Investment.backer_id == user.id)
-            ).scalars().first()
-            if not has_investment:
-                raise HTTPException(status_code=403, detail="Sem acesso a este escrow.")
+        if not has_investment:
+            raise HTTPException(status_code=403, detail="Sem acesso a este escrow.")
 
-        escrow = sync_offer_escrow(db, offer)
+    escrow = sync_offer_escrow(db, offer)
+    db.commit()
 
     return {
         "offer_id": offer.id,
@@ -226,22 +226,23 @@ def escrow_refund(offer_id: int, request: Request, db: Session = Depends(get_db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
 
-    with db.begin():
-        offer = db.execute(
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id)
-            .options(joinedload(StakeOffer.tournament))
-            .with_for_update(of=StakeOffer)
-        ).scalars().first()
-        if not offer:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id)
+        .with_for_update(of=StakeOffer)
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
 
-        if user.tipo != "admin" and user.id != offer.player_id:
-            raise HTTPException(status_code=403, detail="Apenas admin ou dono da oferta pode estornar.")
-        if user.tipo == "admin":
-            ensure_admin_user(user)
+    if user.tipo != "admin" and user.id != offer.player_id:
+        raise HTTPException(status_code=403, detail="Apenas admin ou dono da oferta pode estornar.")
+    if user.tipo == "admin":
+        ensure_admin_user(user)
 
-        sync_offer_escrow(db, offer)
-        result = refund_offer_escrow(db, offer, reason="MANUAL_REFUND")
+    offer.tournament = db.get(Tournament, offer.tournament_id)
+    sync_offer_escrow(db, offer)
+    result = refund_offer_escrow(db, offer, reason="MANUAL_REFUND")
+    db.commit()
 
     return {"success": True, "offer_id": offer_id, "refunded_total": float(result["refunded_total"])}

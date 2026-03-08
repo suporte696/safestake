@@ -431,17 +431,18 @@ async def infinitepay_webhook(request: Request, db: Session = Depends(get_db)):
     mapped_status = _map_webhook_status(payload)
 
     try:
-        with db.begin():
-            tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == order_nsu).with_for_update()
-            tx = db.execute(tx_stmt).scalars().first()
-            if not tx:
-                return {"status": "ok"}
+        tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == order_nsu).with_for_update()
+        tx = db.execute(tx_stmt).scalars().first()
+        if not tx:
+            return {"status": "ok"}
 
-            if mapped_status == "PAID" and tx.status != "PAID":
-                tx.status = "PAID"
-                wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
-                wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+        if mapped_status == "PAID" and tx.status != "PAID":
+            tx.status = "PAID"
+            wallet = ensure_wallet_for_user(db, tx.user_id, with_lock=True)
+            wallet.saldo_disponivel = Decimal(str(wallet.saldo_disponivel)) + Decimal(str(tx.amount))
+            db.commit()
     except Exception:
+        db.rollback()
         return {"status": "ok"}
 
     return {"status": "ok"}
@@ -489,24 +490,24 @@ async def mercadopago_webhook(request: Request, db: Session = Depends(get_db)):
             logger.warning("MP webhook ignored: payment_id=%s external_reference missing", payment_id)
             return {"status": "ok"}
 
-        with db.begin():
-            tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
-            tx = db.execute(tx_stmt).scalars().first()
-            if not tx:
-                logger.warning("MP webhook tx not found: txid=%s payment_id=%s", txid, payment_id)
-                return {"status": "ok"}
+        tx_stmt = select(PixTransaction).where(PixTransaction.order_nsu == txid).with_for_update()
+        tx = db.execute(tx_stmt).scalars().first()
+        if not tx:
+            logger.warning("MP webhook tx not found: txid=%s payment_id=%s", txid, payment_id)
+            return {"status": "ok"}
 
-            credited = _credit_tx_wallet_if_needed(db, tx)
-            if credited:
-                logger.info(
-                    "MP payment credited: txid=%s payment_id=%s user_id=%s amount=%s",
-                    txid,
-                    payment_id,
-                    tx.user_id,
-                    tx.amount,
-                )
-            else:
-                logger.info("MP webhook duplicate ignored: txid=%s payment_id=%s", txid, payment_id)
+        credited = _credit_tx_wallet_if_needed(db, tx)
+        if credited:
+            logger.info(
+                "MP payment credited: txid=%s payment_id=%s user_id=%s amount=%s",
+                txid,
+                payment_id,
+                tx.user_id,
+                tx.amount,
+            )
+            db.commit()
+        else:
+            logger.info("MP webhook duplicate ignored: txid=%s payment_id=%s", txid, payment_id)
     except HTTPException:
         raise
     except Exception:

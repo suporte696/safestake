@@ -169,11 +169,13 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
 
     pix_masked_by_wr = {wr.id: _mask_pix_display(wr.pix_key) for wr in withdrawal_requests}
 
+    user_profile_photo_url = getattr(user, "profile_photo_url", None) if user else None
     return templates.TemplateResponse(
         "admin_dashboard.html",
         {
             "request": request,
             "user": user,
+            "user_profile_photo_url": user_profile_photo_url,
             "wallet": get_wallet_summary(user),
             "pending_docs": pending_docs,
             "reviewed_docs": reviewed_docs,
@@ -191,6 +193,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "can_close_tournament": can_close_tournament,
             "finalized_tournament_ids": [t.id for t in finalized_tournaments],
             "requires_auth": True,
+            "tournament_created": request.query_params.get("created") == "1",
         },
     )
 
@@ -437,7 +440,7 @@ def create_admin_tournament_offer(
     )
     db.commit()
 
-    return RedirectResponse(url="/admin/dashboard?tab=novo-torneio", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?tab=torneios&created=1", status_code=303)
 
 
 @router.post("/api/tournaments/{tournament_id}/close")

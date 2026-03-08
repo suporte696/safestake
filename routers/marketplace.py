@@ -111,10 +111,11 @@ def serialize_offer(offer: StakeOffer) -> dict:
 @router.get("/", response_class=HTMLResponse)
 def marketplace(request: Request, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            run_scheduled_jobs(db)
+        run_scheduled_jobs(db)
+        db.commit()
     except Exception:
         logger.exception("Falha ao executar jobs agendados no carregamento do marketplace")
+        db.rollback()
     user = fetch_current_user(request, db)
     wallet_summary = None
     if user and user.wallet:
@@ -189,10 +190,11 @@ def serialize_bid(bid: StakeBid) -> dict:
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     try:
-        with db.begin():
-            run_scheduled_jobs(db)
+        run_scheduled_jobs(db)
+        db.commit()
     except Exception:
         logger.exception("Falha ao executar jobs agendados no carregamento do dashboard")
+        db.rollback()
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
@@ -421,15 +423,18 @@ def update_player_offer(
         except ValueError:
             data_hora = None
 
+    # FOR UPDATE não pode ser usado com LEFT JOIN (joinedload) no PostgreSQL; buscar oferta sem join
     offer_stmt = (
         select(StakeOffer)
         .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
-        .options(joinedload(StakeOffer.tournament))
         .with_for_update(of=StakeOffer)
     )
     offer = db.execute(offer_stmt).scalars().first()
-    if not offer or not offer.tournament:
+    if not offer:
         raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    tournament = db.get(Tournament, offer.tournament_id)
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
     if _is_offer_closed_by_start_time(offer):
         raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
 
@@ -446,7 +451,6 @@ def update_player_offer(
                 detail=f"Total disponível (%) não pode ser menor que o percentual já vendido ({vendido_pct}%).",
             )
 
-    tournament = offer.tournament
     tournament.nome = tournament_name.strip()
     tournament.sharkscope_id = normalized_room
     tournament.plataforma = normalized_room
@@ -486,25 +490,25 @@ def confirm_player_will_play(
     ensure_user_not_blocked(user)
     iniciar_sem_meta = force_partial.strip().lower() in ("1", "true", "yes", "on")
 
-    with db.begin():
-        offer = db.execute(
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
-            .options(joinedload(StakeOffer.tournament))
-            .with_for_update(of=StakeOffer)
-        ).scalars().first()
-        if not offer:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        sync_offer_escrow(db, offer)
-        if iniciar_sem_meta:
-            result = force_complete_and_release_escrow(db, offer)
-        else:
-            result = release_offer_escrow_to_player(db, offer)
-        if Decimal(str(result["released_total"])) <= 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Não há saldo em escrow liberável. Se quiser iniciar mesmo sem atingir a meta, use \"Iniciar partida (mesmo sem 100%)\".",
-            )
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
+        .with_for_update(of=StakeOffer)
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    sync_offer_escrow(db, offer)
+    if iniciar_sem_meta:
+        result = force_complete_and_release_escrow(db, offer)
+    else:
+        result = release_offer_escrow_to_player(db, offer)
+    if Decimal(str(result["released_total"])) <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Não há saldo em escrow liberável. Se quiser iniciar mesmo sem atingir a meta, use \"Iniciar partida (mesmo sem 100%)\".",
+        )
+    db.commit()
     return RedirectResponse(url="/player/offers?playing=1", status_code=303)
 
 
@@ -521,19 +525,20 @@ def decline_player_will_play(
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
 
-    with db.begin():
-        offer = db.execute(
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
-            .options(joinedload(StakeOffer.tournament))
-            .with_for_update(of=StakeOffer)
-        ).scalars().first()
-        if not offer:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        if offer.tournament and offer.tournament.status == "Jogando":
-            raise HTTPException(status_code=400, detail="Partida já iniciada, não é possível cancelar.")
-        sync_offer_escrow(db, offer)
-        refund_offer_escrow(db, offer, reason="PLAYER_DECLINED")
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id, StakeOffer.player_id == user.id)
+        .with_for_update(of=StakeOffer)
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    tournament = db.get(Tournament, offer.tournament_id)
+    if tournament and tournament.status == "Jogando":
+        raise HTTPException(status_code=400, detail="Partida já iniciada, não é possível cancelar.")
+    sync_offer_escrow(db, offer)
+    refund_offer_escrow(db, offer, reason="PLAYER_DECLINED")
+    db.commit()
     return RedirectResponse(url="/player/offers?declined=1", status_code=303)
 
 
@@ -577,41 +582,40 @@ def create_player_offer(
         except ValueError:
             data_hora = None
 
-    with db.begin():
-        now_sp = datetime.now(LOCAL_TZ).replace(tzinfo=None)
-        deadline_at = data_hora or (now_sp + timedelta(hours=24))
-        tournament = Tournament(
-            nome=tournament_name,
-            sharkscope_id=normalized_room,
-            plataforma=normalized_room,
-            buyin=buyin_value,
-            data_hora=data_hora,
-            status="Aberto",
-        )
-        db.add(tournament)
-        db.flush()
-        offer = StakeOffer(
+    now_sp = datetime.now(LOCAL_TZ).replace(tzinfo=None)
+    deadline_at = data_hora or (now_sp + timedelta(hours=24))
+    tournament = Tournament(
+        nome=tournament_name,
+        sharkscope_id=normalized_room,
+        plataforma=normalized_room,
+        buyin=buyin_value,
+        data_hora=data_hora,
+        status="Aberto",
+    )
+    db.add(tournament)
+    db.flush()
+    offer = StakeOffer(
+        tournament_id=tournament.id,
+        player_id=user.id,
+        markup=markup_value,
+        total_disponivel_pct=total_pct_value,
+        vendido_pct=Decimal("0"),
+        escrow_status="COLLECTING",
+    )
+    db.add(offer)
+    db.flush()
+    total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
+    db.add(
+        TournamentEscrow(
             tournament_id=tournament.id,
-            player_id=user.id,
-            markup=markup_value,
-            total_disponivel_pct=total_pct_value,
-            vendido_pct=Decimal("0"),
-            escrow_status="COLLECTING",
+            offer_id=offer.id,
+            total_required=total_required,
+            total_collected=Decimal("0"),
+            status="COLLECTING",
+            deadline_at=deadline_at,
         )
-        db.add(offer)
-        db.flush()
-        total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
-        db.add(
-            TournamentEscrow(
-                tournament_id=tournament.id,
-                offer_id=offer.id,
-                total_required=total_required,
-                total_collected=Decimal("0"),
-                status="COLLECTING",
-                deadline_at=deadline_at,
-            )
-        )
-
+    )
+    db.commit()
     return RedirectResponse(url="/player/offers", status_code=303)
 
 
@@ -630,71 +634,70 @@ async def invest(request: Request, db: Session = Depends(get_db)):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="O valor do apoio deve ser maior que zero.")
 
-    with db.begin():
-        user = fetch_current_user(request, db)
-        if not user:
-            raise HTTPException(status_code=401, detail="Faça login para continuar com o apoio.")
-        ensure_user_not_blocked(user)
-        if not is_user_kyc_approved(user, db):
-            raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para investir.")
-        if not user.wallet:
-            raise HTTPException(status_code=400, detail="Carteira não encontrada. Atualize a página e tente novamente.")
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login para continuar com o apoio.")
+    ensure_user_not_blocked(user)
+    if not is_user_kyc_approved(user, db):
+        raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para investir.")
+    if not user.wallet:
+        raise HTTPException(status_code=400, detail="Carteira não encontrada. Atualize a página e tente novamente.")
 
-        offer_stmt = (
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id)
-            .with_for_update()
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id)
+        .with_for_update()
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    tournament = db.execute(select(Tournament).where(Tournament.id == offer.tournament_id)).scalars().first()
+    if not tournament:
+        raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
+    if offer.escrow_status != "COLLECTING":
+        raise HTTPException(status_code=400, detail="Esta oferta não está mais aberta para novos apoios.")
+    if _is_offer_closed_by_start_time(offer):
+        raise HTTPException(status_code=400, detail="Esta oferta já foi encerrada para apoio.")
+
+    buyin = Decimal(str(tournament.buyin))
+    markup = Decimal(str(offer.markup))
+    total_pct = Decimal(str(offer.total_disponivel_pct))
+    sum_sold = db.execute(
+        select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
+    ).scalar_one()
+    sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    available_pct = total_pct - sold_pct
+
+    if buyin <= 0 or markup <= 0:
+        raise HTTPException(status_code=400, detail="Buy-in ou markup inválido nesta oferta. Tente novamente mais tarde.")
+    share_pct = (amount / (buyin * markup)) * Decimal("100")
+    share_pct = q_money(share_pct)
+    if share_pct <= 0:
+        raise HTTPException(status_code=400, detail="Valor do apoio resulta em percentual inválido.")
+    if share_pct > available_pct + Decimal("0.01"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Não há cota suficiente para esse valor (disponível: {float(available_pct):.1f}%). Recarregue a página e tente novamente.",
         )
-        offer = db.execute(offer_stmt).scalars().first()
-        if not offer:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        tournament = db.execute(select(Tournament).where(Tournament.id == offer.tournament_id)).scalars().first()
-        if not tournament:
-            raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
-        if offer.escrow_status != "COLLECTING":
-            raise HTTPException(status_code=400, detail="Esta oferta não está mais aberta para novos apoios.")
-        if _is_offer_closed_by_start_time(offer):
-            raise HTTPException(status_code=400, detail="Esta oferta já foi encerrada para apoio.")
 
-        buyin = Decimal(str(tournament.buyin))
-        markup = Decimal(str(offer.markup))
-        total_pct = Decimal(str(offer.total_disponivel_pct))
-        sum_sold = db.execute(
-            select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
-        ).scalar_one()
-        sold_pct = q_money(Decimal(str(sum_sold or 0)))
-        available_pct = total_pct - sold_pct
+    if user.wallet.saldo_disponivel < amount:
+        raise HTTPException(status_code=400, detail="Saldo insuficiente para concluir este apoio.")
 
-        if buyin <= 0 or markup <= 0:
-            raise HTTPException(status_code=400, detail="Buy-in ou markup inválido nesta oferta. Tente novamente mais tarde.")
-        share_pct = (amount / (buyin * markup)) * Decimal("100")
-        share_pct = q_money(share_pct)
-        if share_pct <= 0:
-            raise HTTPException(status_code=400, detail="Valor do apoio resulta em percentual inválido.")
-        if share_pct > available_pct + Decimal("0.01"):
-            raise HTTPException(
-                status_code=400,
-                detail=f"Não há cota suficiente para esse valor (disponível: {float(available_pct):.1f}%). Recarregue a página e tente novamente.",
-            )
-
-        if user.wallet.saldo_disponivel < amount:
-            raise HTTPException(status_code=400, detail="Saldo insuficiente para concluir este apoio.")
-
-        user.wallet.saldo_disponivel = user.wallet.saldo_disponivel - amount
-        user.wallet.saldo_em_jogo = user.wallet.saldo_em_jogo + amount
-        player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
-        player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
-        offer.vendido_pct = sold_pct + share_pct
-        investment = Investment(
-            offer_id=offer.id,
-            backer_id=user.id,
-            valor_investido=amount,
-            pct_comprada=share_pct,
-            lucro_recebido=Decimal("0"),
-        )
-        db.add(investment)
-        sync_offer_escrow(db, offer)
-
+    user.wallet.saldo_disponivel = user.wallet.saldo_disponivel - amount
+    user.wallet.saldo_em_jogo = user.wallet.saldo_em_jogo + amount
+    player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
+    player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
+    offer.vendido_pct = sold_pct + share_pct
+    investment = Investment(
+        offer_id=offer.id,
+        backer_id=user.id,
+        valor_investido=amount,
+        pct_comprada=share_pct,
+        lucro_recebido=Decimal("0"),
+    )
+    db.add(investment)
+    sync_offer_escrow(db, offer)
+    db.commit()
     return {"success": True}
 
 
@@ -733,51 +736,50 @@ async def bid_create(request: Request, db: Session = Depends(get_db)):
     if not is_user_kyc_approved(user, db):
         raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para enviar propostas.")
 
-    with db.begin():
-        wallet_stmt = select(Wallet).where(Wallet.user_id == user.id).with_for_update()
-        wallet = db.execute(wallet_stmt).scalars().first()
-        if not wallet:
-            raise HTTPException(status_code=400, detail="Carteira não encontrada. Atualize a página e tente novamente.")
+    wallet_stmt = select(Wallet).where(Wallet.user_id == user.id).with_for_update()
+    wallet = db.execute(wallet_stmt).scalars().first()
+    if not wallet:
+        raise HTTPException(status_code=400, detail="Carteira não encontrada. Atualize a página e tente novamente.")
 
-        offer_stmt = (
-            select(StakeOffer)
-            .where(StakeOffer.id == offer_id)
-            .options(joinedload(StakeOffer.tournament))
-        )
-        offer = db.execute(offer_stmt).scalars().first()
-        if not offer or not offer.tournament:
-            raise HTTPException(status_code=404, detail="Oferta não encontrada.")
-        if offer.escrow_status != "COLLECTING":
-            raise HTTPException(status_code=400, detail="Esta oferta não está mais aberta para propostas.")
-        if _is_offer_closed_by_start_time(offer):
-            raise HTTPException(status_code=400, detail="Esta oferta já foi encerrada para novas propostas.")
-        buyin = Decimal(str(offer.tournament.buyin))
-        if buyin <= 0:
-            raise HTTPException(status_code=400, detail="Buy-in inválido para receber propostas.")
-        total_pct = Decimal(str(offer.total_disponivel_pct))
-        sold_pct = Decimal(str(offer.vendido_pct))
-        available_pct = total_pct - sold_pct
-        share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
-        if share_pct > available_pct:
-            raise HTTPException(status_code=400, detail="Percentual disponível insuficiente para essa proposta.")
+    offer_stmt = (
+        select(StakeOffer)
+        .where(StakeOffer.id == offer_id)
+        .options(joinedload(StakeOffer.tournament))
+    )
+    offer = db.execute(offer_stmt).scalars().first()
+    if not offer or not offer.tournament:
+        raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    if offer.escrow_status != "COLLECTING":
+        raise HTTPException(status_code=400, detail="Esta oferta não está mais aberta para propostas.")
+    if _is_offer_closed_by_start_time(offer):
+        raise HTTPException(status_code=400, detail="Esta oferta já foi encerrada para novas propostas.")
+    buyin = Decimal(str(offer.tournament.buyin))
+    if buyin <= 0:
+        raise HTTPException(status_code=400, detail="Buy-in inválido para receber propostas.")
+    total_pct = Decimal(str(offer.total_disponivel_pct))
+    sold_pct = Decimal(str(offer.vendido_pct))
+    available_pct = total_pct - sold_pct
+    share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
+    if share_pct > available_pct:
+        raise HTTPException(status_code=400, detail="Percentual disponível insuficiente para essa proposta.")
 
-        saldo_disp = Decimal(str(wallet.saldo_disponivel))
-        if saldo_disp < amount:
-            raise HTTPException(status_code=400, detail="Saldo disponível insuficiente para enviar esta proposta.")
+    saldo_disp = Decimal(str(wallet.saldo_disponivel))
+    if saldo_disp < amount:
+        raise HTTPException(status_code=400, detail="Saldo disponível insuficiente para enviar esta proposta.")
 
-        saldo_bloq = Decimal(str(getattr(wallet, "saldo_bloqueado", 0) or 0))
-        wallet.saldo_disponivel = saldo_disp - amount
-        wallet.saldo_bloqueado = saldo_bloq + amount
-        bid = StakeBid(
-            offer_id=offer.id,
-            backer_id=user.id,
-            amount=amount,
-            proposed_markup=proposed_markup,
-            status="PENDING",
-        )
-        db.add(bid)
-        db.flush()
-
+    saldo_bloq = Decimal(str(getattr(wallet, "saldo_bloqueado", 0) or 0))
+    wallet.saldo_disponivel = saldo_disp - amount
+    wallet.saldo_bloqueado = saldo_bloq + amount
+    bid = StakeBid(
+        offer_id=offer.id,
+        backer_id=user.id,
+        amount=amount,
+        proposed_markup=proposed_markup,
+        status="PENDING",
+    )
+    db.add(bid)
+    db.flush()
+    db.commit()
     return {"success": True, "bid_id": bid.id}
 
 
@@ -801,84 +803,87 @@ async def bid_respond(
     if not is_user_kyc_approved(user, db):
         raise HTTPException(status_code=403, detail="KYC pendente. Aguarde aprovação do admin para responder propostas.")
 
-    with db.begin():
-        bid_stmt = (
-            select(StakeBid)
-            .where(StakeBid.id == bid_id)
-            .options(
-                joinedload(StakeBid.offer).joinedload(StakeOffer.tournament),
-                joinedload(StakeBid.offer).joinedload(StakeOffer.player),
-                joinedload(StakeBid.backer),
-            )
+    bid_stmt = (
+        select(StakeBid)
+        .where(StakeBid.id == bid_id)
+        .options(
+            joinedload(StakeBid.offer).joinedload(StakeOffer.tournament),
+            joinedload(StakeBid.offer).joinedload(StakeOffer.player),
+            joinedload(StakeBid.backer),
         )
-        bid = db.execute(bid_stmt).scalars().first()
-        if not bid:
-            raise HTTPException(status_code=404, detail="Proposta não encontrada.")
-        if bid.status != "PENDING":
-            raise HTTPException(status_code=400, detail="Esta proposta já foi respondida anteriormente.")
+    )
+    bid = db.execute(bid_stmt).scalars().first()
+    if not bid:
+        raise HTTPException(status_code=404, detail="Proposta não encontrada.")
+    if bid.status != "PENDING":
+        raise HTTPException(status_code=400, detail="Esta proposta já foi respondida anteriormente.")
 
-        offer = bid.offer
-        if offer.player_id != user.id:
-            raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
-        if offer.escrow_status != "COLLECTING":
-            raise HTTPException(status_code=400, detail="A oferta não está mais aberta para resposta de propostas.")
+    offer = bid.offer
+    if offer.player_id != user.id:
+        raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
+    if offer.escrow_status != "COLLECTING":
+        raise HTTPException(status_code=400, detail="A oferta não está mais aberta para resposta de propostas.")
 
-        backer_wallet_stmt = select(Wallet).where(Wallet.user_id == bid.backer_id).with_for_update()
-        backer_wallet = db.execute(backer_wallet_stmt).scalars().first()
-        if not backer_wallet:
-            raise HTTPException(status_code=400, detail="Carteira do apoiador não encontrada para processar a resposta.")
+    backer_wallet_stmt = select(Wallet).where(Wallet.user_id == bid.backer_id).with_for_update()
+    backer_wallet = db.execute(backer_wallet_stmt).scalars().first()
+    if not backer_wallet:
+        raise HTTPException(status_code=400, detail="Carteira do apoiador não encontrada para processar a resposta.")
 
-        amount = Decimal(str(bid.amount))
-        saldo_bloq = Decimal(str(getattr(backer_wallet, "saldo_bloqueado", 0) or 0))
-        if saldo_bloq < amount:
-            bid.status = "REJECTED"
-            raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente para processar esta proposta.")
+    amount = Decimal(str(bid.amount))
+    saldo_bloq = Decimal(str(getattr(backer_wallet, "saldo_bloqueado", 0) or 0))
+    if saldo_bloq < amount:
+        bid.status = "REJECTED"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Saldo bloqueado insuficiente para processar esta proposta.")
 
-        if action == "ACCEPT" and _is_offer_closed_by_start_time(offer):
-            backer_wallet.saldo_bloqueado = saldo_bloq - amount
-            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
-            bid.status = "REJECTED"
-            raise HTTPException(status_code=400, detail="Esta oferta está encerrada e não aceita novas confirmações.")
-
-        if action == "REJECT":
-            backer_wallet.saldo_bloqueado = saldo_bloq - amount
-            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
-            bid.status = "REJECTED"
-            return {"success": True, "status": "REJECTED"}
-
-        # ACCEPT
-        buyin = Decimal(str(offer.tournament.buyin))
-        total_pct = Decimal(str(offer.total_disponivel_pct))
-        sold_pct = Decimal(str(offer.vendido_pct))
-        available_pct = total_pct - sold_pct
-        proposed_markup = Decimal(str(bid.proposed_markup))
-        if buyin <= 0 or proposed_markup <= 0:
-            raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
-
-        share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
-        if share_pct > available_pct:
-            backer_wallet.saldo_bloqueado = saldo_bloq - amount
-            backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
-            bid.status = "REJECTED"
-            raise HTTPException(
-                status_code=400,
-                detail="Percentual disponível na oferta não é mais suficiente para este valor/markup.",
-            )
-
+    if action == "ACCEPT" and _is_offer_closed_by_start_time(offer):
         backer_wallet.saldo_bloqueado = saldo_bloq - amount
-        backer_wallet.saldo_em_jogo = Decimal(str(backer_wallet.saldo_em_jogo)) + amount
-        player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
-        player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
-        offer.vendido_pct = sold_pct + share_pct
-        investment = Investment(
-            offer_id=offer.id,
-            backer_id=bid.backer_id,
-            valor_investido=amount,
-            pct_comprada=share_pct,
-            lucro_recebido=Decimal("0"),
-        )
-        db.add(investment)
-        bid.status = "ACCEPTED"
-        sync_offer_escrow(db, offer)
+        backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+        bid.status = "REJECTED"
+        db.commit()
+        raise HTTPException(status_code=400, detail="Esta oferta está encerrada e não aceita novas confirmações.")
 
+    if action == "REJECT":
+        backer_wallet.saldo_bloqueado = saldo_bloq - amount
+        backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+        bid.status = "REJECTED"
+        db.commit()
+        return {"success": True, "status": "REJECTED"}
+
+    # ACCEPT
+    buyin = Decimal(str(offer.tournament.buyin))
+    total_pct = Decimal(str(offer.total_disponivel_pct))
+    sold_pct = Decimal(str(offer.vendido_pct))
+    available_pct = total_pct - sold_pct
+    proposed_markup = Decimal(str(bid.proposed_markup))
+    if buyin <= 0 or proposed_markup <= 0:
+        raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
+
+    share_pct = (amount / (buyin * proposed_markup)) * Decimal("100")
+    if share_pct > available_pct:
+        backer_wallet.saldo_bloqueado = saldo_bloq - amount
+        backer_wallet.saldo_disponivel = Decimal(str(backer_wallet.saldo_disponivel)) + amount
+        bid.status = "REJECTED"
+        db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail="Percentual disponível na oferta não é mais suficiente para este valor/markup.",
+        )
+
+    backer_wallet.saldo_bloqueado = saldo_bloq - amount
+    backer_wallet.saldo_em_jogo = Decimal(str(backer_wallet.saldo_em_jogo)) + amount
+    player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
+    player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
+    offer.vendido_pct = sold_pct + share_pct
+    investment = Investment(
+        offer_id=offer.id,
+        backer_id=bid.backer_id,
+        valor_investido=amount,
+        pct_comprada=share_pct,
+        lucro_recebido=Decimal("0"),
+    )
+    db.add(investment)
+    bid.status = "ACCEPTED"
+    sync_offer_escrow(db, offer)
+    db.commit()
     return {"success": True, "status": "ACCEPTED"}
