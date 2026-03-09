@@ -111,7 +111,7 @@
       <h2 class="font-title text-xl uppercase">Criar Novo Torneio/Oferta</h2>
       <span class="text-xs text-gray-400">Publica na Home para apoiadores</span>
     </div>
-    <form method="post" action="/admin/tournaments/create" class="grid gap-4 md:grid-cols-2">
+    <form id="form-create-tournament" method="post" action="/admin/tournaments/create" class="grid gap-4 md:grid-cols-2">
       <div class="md:col-span-2 space-y-2">
         <label class="text-xs text-gray-400">Nome do Torneio</label>
         <input
@@ -183,6 +183,7 @@
       <div class="md:col-span-2">
         <button
           type="submit"
+          form="form-create-tournament"
           class="px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
         >
           Publicar Torneio
@@ -578,6 +579,17 @@
   document.querySelectorAll(".admin-tab").forEach((btn) => {
     btn.addEventListener("click", () => switchToTab(btn.getAttribute("data-tab")));
   });
+
+  // Enter na aba "Novo torneio" submete só o form de criar torneio (evita enviar o primeiro form da página)
+  var formCreate = document.getElementById("form-create-tournament");
+  if (formCreate) {
+    formCreate.addEventListener("keydown", function(ev) {
+      if (ev.key === "Enter" && /^(INPUT|SELECT|TEXTAREA)$/.test(ev.target.tagName)) {
+        ev.preventDefault();
+        formCreate.requestSubmit();
+      }
+    });
+  }
 
   document.querySelectorAll(".view-tournament-details").forEach((btn) => {
     btn.addEventListener("click", () => {

@@ -485,7 +485,7 @@ def confirm_player_will_play(
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
     iniciar_sem_meta = force_partial.strip().lower() in ("1", "true", "yes", "on")
@@ -521,7 +521,7 @@ def decline_player_will_play(
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
 
@@ -556,7 +556,8 @@ def create_player_offer(
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
-    if user.tipo != "jogador":
+    # Mesmo critério do GET /player/offers: admin tem perfil jogador implícito
+    if user.tipo not in ("jogador", "admin"):
         return RedirectResponse(url="/", status_code=303)
     ensure_user_not_blocked(user)
     if not is_user_kyc_approved(user, db):
@@ -797,7 +798,7 @@ async def bid_respond(
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para responder a proposta.")
-    if user.tipo != "jogador":
+    if user.tipo not in ("jogador", "admin"):
         raise HTTPException(status_code=403, detail="Apenas o dono da oferta pode responder.")
     ensure_user_not_blocked(user)
     if not is_user_kyc_approved(user, db):

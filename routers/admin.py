@@ -170,7 +170,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     pix_masked_by_wr = {wr.id: _mask_pix_display(wr.pix_key) for wr in withdrawal_requests}
 
     user_profile_photo_url = getattr(user, "profile_photo_url", None) if user else None
-    return templates.TemplateResponse(
+    response = templates.TemplateResponse(
         "admin_dashboard.html",
         {
             "request": request,
@@ -196,6 +196,10 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "tournament_created": request.query_params.get("created") == "1",
         },
     )
+    # Evita cache antigo: cliente sempre recebe HTML atual (evita bug de Enter/Publicar enviando form errado)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.post("/admin/withdrawals/{withdrawal_id}/approve")
