@@ -302,6 +302,13 @@
     var panel = document.getElementById("player-tab-" + tabKey);
     if (panel) panel.classList.remove("hidden");
   }
+  // Abre a aba correta ao carregar a página, com base no parâmetro ?tab= (ex.: tab=ofertas)
+  var tabParam = new URLSearchParams(window.location.search).get("tab");
+  if (tabParam) {
+    switchPlayerTab(tabParam);
+  } else {
+    switchPlayerTab("criar");
+  }
   document.querySelectorAll(".player-tab").forEach(function(btn) {
     btn.addEventListener("click", function() {
       switchPlayerTab(btn.getAttribute("data-player-tab"));

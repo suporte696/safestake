@@ -617,7 +617,7 @@ def create_player_offer(
         )
     )
     db.commit()
-    return RedirectResponse(url="/player/offers", status_code=303)
+    return RedirectResponse(url="/player/offers?tab=ofertas", status_code=303)
 
 
 @router.post("/api/invest")
