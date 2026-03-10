@@ -261,7 +261,7 @@
               <td class="py-3 font-mono text-emerald-400">US$ {{ "%.2f"|format(stake.resultado) }}</td>
               <td class="py-3">
                 <span
-                  class="px-3 py-1 rounded-full text-xs border border-white/10 {% if stake.status == 'Jogando' %}text-emerald-400{% else %}text-gray-300{% endif %}"
+                  class="px-3 py-1 rounded-full text-xs border {% if stake.status == 'Jogando' %}border-emerald-400/40 text-emerald-400{% elif stake.status == 'Cancelado' %}border-amber-400/40 text-amber-400{% else %}border-white/10 text-gray-300{% endif %}"
                 >
                   {{ stake.status }}
                 </span>

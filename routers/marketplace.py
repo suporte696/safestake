@@ -231,6 +231,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         lucro_recebido = Decimal(str(investment.lucro_recebido or 0))
         total_investido += valor_investido
         total_recebido += lucro_recebido
+        if offer and getattr(offer, "escrow_status", None) == "REFUNDED":
+            stake_status = "Cancelado"
+        else:
+            stake_status = tournament.status if tournament else "Aberto"
         stakes.append(
             {
                 "tournament": tournament.nome if tournament else "Torneio",
@@ -238,7 +242,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                 "valor": valor_investido,
                 "pct": investment.pct_comprada,
                 "resultado": lucro_recebido,
-                "status": tournament.status if tournament else "Aberto",
+                "status": stake_status,
             }
         )
 
@@ -352,16 +356,27 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
         .where(StakeOffer.player_id == user.id)
         .options(joinedload(StakeOffer.tournament))
         .options(joinedload(StakeOffer.investments).joinedload(Investment.backer))
+        .options(joinedload(StakeOffer.escrows))
         .order_by(StakeOffer.id.desc())
     )
     offers = db.execute(stmt).unique().scalars().all()
-    tournament_ids_jogando = [o.tournament_id for o in offers if o.tournament and o.tournament.status == "Jogando"]
+    for offer in offers:
+        sync_offer_escrow(db, offer)
+    db.commit()
+    tournament_ids = [o.tournament_id for o in offers if o.tournament]
     has_result_ids: set[int] = set()
-    if tournament_ids_jogando:
-        result_tids = db.execute(
-            select(MatchResult.tournament_id).where(MatchResult.tournament_id.in_(tournament_ids_jogando))
-        ).scalars().all()
-        has_result_ids = {int(tid) for tid in result_tids if tid is not None}
+    result_status_by_tournament: dict[int, str] = {}
+    if tournament_ids:
+        result_rows = db.execute(
+            select(MatchResult.tournament_id, MatchResult.review_status).where(
+                MatchResult.player_id == user.id, MatchResult.tournament_id.in_(tournament_ids)
+            )
+        ).all()
+        for tid, status in result_rows:
+            if tid is not None:
+                has_result_ids.add(int(tid))
+                result_status_by_tournament[int(tid)] = status or "PENDING"
+    tournament_ids_jogando = [o.tournament_id for o in offers if o.tournament and o.tournament.status == "Jogando"]
     awaiting_result_count = len([tid for tid in tournament_ids_jogando if tid not in has_result_ids])
     return templates.TemplateResponse(
         "player_offers.html",
@@ -371,8 +386,9 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
             "offers": offers,
             "wallet": wallet_summary,
             "supported_rooms": sorted(SUPPORTED_ROOMS),
-        "awaiting_result_count": awaiting_result_count,
-        "has_result_ids": has_result_ids,
+            "awaiting_result_count": awaiting_result_count,
+            "has_result_ids": has_result_ids,
+            "result_status_by_tournament": result_status_by_tournament,
             "requires_auth": True,
         },
     )
