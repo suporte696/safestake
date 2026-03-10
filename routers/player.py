@@ -42,6 +42,11 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
     result_by_tournament = {r.tournament_id: r for r in match_results}
     offers_with_result = [(o, result_by_tournament[o.tournament.id]) for o in offers if o.tournament.id in result_by_tournament]
     embed = request.query_params.get("embed") == "1"
+    selected_tournament_id_param = request.query_params.get("tournament_id")
+    try:
+        selected_tournament_id = int(selected_tournament_id_param) if selected_tournament_id_param else None
+    except ValueError:
+        selected_tournament_id = None
     return templates.TemplateResponse(
         "player_submit_result.html",
         {
@@ -54,6 +59,7 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
             "error": None,
             "requires_auth": True,
             "embed": embed,
+            "selected_tournament_id": selected_tournament_id,
         },
     )
 
@@ -64,9 +70,6 @@ async def submit_player_result(
     tournament_id: int = Form(...),
     posicao_final: int = Form(...),
     valor_premio: float = Form(...),
-    valor_enviado: float = Form(...),
-    resultado_print: UploadFile = File(...),
-    comprovante_pagamento: UploadFile = File(...),
     embed: str = Form(""),
     db: Session = Depends(get_db),
 ):
@@ -90,20 +93,17 @@ async def submit_player_result(
 
     try:
         premio_value = Decimal(str(valor_premio))
-        enviado_value = Decimal(str(valor_enviado))
     except InvalidOperation as exc:
         raise HTTPException(status_code=400, detail="Valores financeiros inválidos. Revise os campos e tente novamente.") from exc
 
     if posicao_final <= 0:
         raise HTTPException(status_code=400, detail="Posição final inválida. Informe uma posição maior que zero.")
-    if premio_value < 0 or enviado_value < 0:
+    if premio_value < 0:
         raise HTTPException(status_code=400, detail="Os valores informados devem ser positivos.")
 
-    try:
-        print_url = await save_match_file(resultado_print, user_id=user.id, kind="print")
-        comprovante_url = await save_match_file(comprovante_pagamento, user_id=user.id, kind="comprovante")
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    enviado_value = premio_value
+    print_url = None
+    comprovante_url = None
 
     result_stmt = select(MatchResult).where(
         MatchResult.tournament_id == tournament_id,
@@ -147,7 +147,7 @@ async def submit_player_result(
         title="Novo resultado em revisão",
         message=(
             f"{user.nome} enviou/atualizou resultado do torneio #{offer.tournament_id} "
-            f"com valor enviado de US$ {enviado_value:.2f}."
+            f"com prêmio informado de US$ {premio_value:.2f}."
         ),
         action_url="/admin/results",
     )

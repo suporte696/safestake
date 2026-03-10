@@ -45,24 +45,6 @@
           <!-- Desktop nav -->
           <nav class="hidden lg:flex items-center gap-4 xl:gap-6 text-sm text-gray-300 flex-wrap justify-center">
             {% if user and user.tipo == "admin" %}
-            <div class="flex items-center gap-2 shrink-0">
-              <span class="text-[10px] xl:text-xs uppercase tracking-widest text-gray-500 font-title whitespace-nowrap">Ver como</span>
-              <div class="flex rounded-lg bg-black/40 border border-emerald-400/30 p-0.5">
-                <a
-                  href="/admin/dashboard"
-                  class="px-3 xl:px-4 py-2 rounded-md text-xs xl:text-sm font-semibold transition-all {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
-                >
-                  Admin
-                </a>
-                <a
-                  href="/player/offers"
-                  class="px-3 xl:px-4 py-2 rounded-md text-xs xl:text-sm font-semibold transition-all {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black{% else %}text-gray-400 hover:text-white hover:bg-white/10{% endif %}"
-                >
-                  Jogador
-                </a>
-              </div>
-            </div>
-            <span class="text-white/20 hidden xl:inline">|</span>
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
             {% elif user and user.tipo == "apoiador" %}
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
@@ -120,14 +102,42 @@
               US$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
             </span>
           </div>
-          <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
-            {{ user.nome[:1]|upper }}
+          <div class="relative">
+            <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
+              {{ user.nome[:1]|upper }}
+            </div>
+            <button
+              id="viewAsToggle"
+              type="button"
+              class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 text-sm truncate max-w-[140px] sm:max-w-none inline-block cursor-pointer ml-2"
+            >
+              Olá, {{ user.nome }}
+            </button>
+            {% if user.tipo == "admin" %}
+            <div
+              id="viewAsMenu"
+              class="hidden absolute right-0 mt-2 w-52 bg-black border border-white/10 rounded-xl shadow-xl z-50"
+            >
+              <div class="px-3 py-2 border-b border-white/10">
+                <p class="text-[10px] uppercase tracking-widest text-gray-500 font-title">Ver como</p>
+              </div>
+              <div class="py-1">
+                <a
+                  href="/admin/dashboard"
+                  class="block px-3 py-2 text-sm font-semibold {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
+                >
+                  Admin
+                </a>
+                <a
+                  href="/player/offers"
+                  class="block px-3 py-2 text-sm font-semibold {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
+                >
+                  Jogador
+                </a>
+              </div>
+            </div>
+            {% endif %}
           </div>
-          <span
-            class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 text-sm truncate max-w-[140px] sm:max-w-none inline-block cursor-default"
-          >
-            Olá, {{ user.nome }}
-          </span>
           <a
             href="/logout"
             class="px-3 sm:px-4 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition text-sm"
@@ -285,6 +295,27 @@
       window.handleNetworkError = (fallbackMessage = "Falha de conexão. Verifique sua internet e tente novamente.") => {
         window.showToast(fallbackMessage, "error");
       };
+    </script>
+
+    <script>
+      (function() {
+        const toggle = document.getElementById("viewAsToggle");
+        const menu = document.getElementById("viewAsMenu");
+        if (!toggle || !menu) return;
+
+        toggle.addEventListener("click", function(event) {
+          event.stopPropagation();
+          const isOpen = !menu.classList.contains("hidden");
+          menu.classList.toggle("hidden", isOpen);
+        });
+
+        document.addEventListener("click", function(event) {
+          if (!menu || menu.classList.contains("hidden")) return;
+          if (!menu.contains(event.target) && !toggle.contains(event.target)) {
+            menu.classList.add("hidden");
+          }
+        });
+      })();
     </script>
 
     <script>

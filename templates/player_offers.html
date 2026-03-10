@@ -23,7 +23,7 @@
 
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-player-tab="criar">Criar oferta</button>
-    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="ofertas">Minhas ofertas</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="ofertas">Meus torneios</button>
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="resultado">Enviar resultado</button>
   </div>
 
@@ -112,10 +112,10 @@
   </div>
 
   <div id="player-tab-ofertas" class="player-tab-panel hidden space-y-4">
-    <div class="flex items-center justify-between">
-      <h2 class="font-title text-xl uppercase">Minhas ofertas</h2>
-      <span class="text-xs text-gray-400">{{ offers|length }} ofertas</span>
-    </div>
+  <div class="flex items-center justify-between">
+    <h2 class="font-title text-xl uppercase">Meus torneios</h2>
+    <span class="text-xs text-gray-400">{{ offers|length }} torneios</span>
+  </div>
     <div id="player-offers-list" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {% for offer in offers %}
       <div class="player-offer-card bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2" data-offer-id="{{ offer.id }}">
@@ -139,10 +139,11 @@
         >
           Ver detalhes
         </button>
+        {% if offer.tournament.status != "Finalizado" %}
         <details class="pt-2 border-t border-white/10">
-          <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar oferta</summary>
+          <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar torneio</summary>
           {% if offer.investments %}
-          <p class="text-xs text-amber-400 mt-2">Há aportes nesta oferta. O total disponível (%) não pode ser menor que o já vendido ({{ "%.2f"|format(offer.vendido_pct) }}%).</p>
+          <p class="text-xs text-amber-400 mt-2">Há aportes neste torneio. O total disponível (%) não pode ser menor que o já vendido ({{ "%.2f"|format(offer.vendido_pct) }}%).</p>
           {% endif %}
           <form action="/player/offers/{{ offer.id }}/update" method="post" class="grid gap-2 mt-2">
             <input name="tournament_name" value="{{ offer.tournament.nome }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
@@ -158,6 +159,11 @@
             <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">Salvar edição</button>
           </form>
         </details>
+        {% else %}
+        <div class="pt-2 border-t border-white/10">
+          <p class="text-xs text-gray-500">Este torneio foi finalizado e não pode mais ser editado.</p>
+        </div>
+        {% endif %}
         {% if offer.investments and offer.tournament.status == "Aberto" %}
         <div class="pt-2 border-t border-white/10 grid gap-2">
           {% if offer.escrow_status == "COMPLETE" %}
@@ -196,13 +202,13 @@
   <div id="playerOfferModal" class="fixed inset-0 z-50 hidden">
     <div class="absolute inset-0 bg-black/70" id="playerOfferModalBackdrop"></div>
     <div class="absolute inset-0 flex items-center justify-center p-4 overflow-y-auto">
-      <div id="playerOfferModalContent" class="bg-[#0b0b0b] border border-white/10 rounded-2xl p-6 w-full max-w-lg my-8 shadow-xl">
-        <div class="flex justify-between items-start mb-4">
-          <h3 id="playerOfferModalTitle" class="font-title text-xl uppercase text-emerald-400">Detalhes do torneio</h3>
-          <button type="button" id="playerOfferModalClose" class="text-gray-400 hover:text-white">✕</button>
-        </div>
-        <div id="playerOfferModalBody" class="space-y-4 text-sm text-gray-300"></div>
-        <div id="playerOfferModalActions" class="mt-4 pt-4 border-t border-white/10 space-y-2"></div>
+      <div id="playerOfferModalContent" class="bg-[#0b0b0b] border border-white/10 rounded-2xl p-6 w-full max-w-2xl my-8 shadow-xl">
+      <div class="flex justify-between items-start mb-4">
+        <h3 id="playerOfferModalTitle" class="font-title text-xl uppercase text-emerald-400">Detalhes do torneio</h3>
+        <button type="button" id="playerOfferModalClose" class="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/20 text-gray-400 hover:text-white hover:border-emerald-400 transition" aria-label="Fechar detalhes do torneio">✕</button>
+      </div>
+      <div id="playerOfferModalBody" class="space-y-4 text-sm text-gray-300"></div>
+      <div id="playerOfferModalActions" class="mt-4 pt-4 border-t border-white/10 space-y-2"></div>
       </div>
     </div>
   </div>
@@ -214,6 +220,7 @@
     {% for offer in offers %}
     {
       id: {{ offer.id }},
+      tournamentId: {{ offer.tournament.id }},
       nome: {{ offer.tournament.nome|tojson }},
       sala: {{ (offer.tournament.plataforma or offer.tournament.sharkscope_id or "Sala não informada")|tojson }},
       buyin: {{ offer.tournament.buyin }},
@@ -222,6 +229,7 @@
       escrowStatus: {{ offer.escrow_status|tojson }},
       totalPct: {{ offer.total_disponivel_pct }},
       vendidoPct: {{ offer.vendido_pct }},
+      hasResult: {{ 'true' if offer.tournament.id in has_result_ids else 'false' }},
       investments: [
         {% for inv in offer.investments %}
         { nome: {{ (inv.backer.nome if inv.backer else "Usuário #" ~ inv.backer_id)|tojson }}, pct: {{ inv.pct_comprada }}, amount: {{ inv.valor_investido }} }{% if not loop.last %},{% endif %}
@@ -260,6 +268,24 @@
         if (btnClone) { btnClone.classList.add("w-full", "px-3", "py-2", "rounded-lg"); }
         actions.appendChild(clone);
       });
+    }
+
+    // Ação rápida para informar resultado da partida
+    if (offer.status !== "Aberto" && !offer.hasResult) {
+      const resultForm = document.createElement("form");
+      resultForm.method = "get";
+      resultForm.action = "/player/results/new";
+      const hidden = document.createElement("input");
+      hidden.type = "hidden";
+      hidden.name = "tournament_id";
+      hidden.value = String(offer.tournamentId);
+      resultForm.appendChild(hidden);
+      const btn = document.createElement("button");
+      btn.type = "submit";
+      btn.className = "w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 text-sm font-semibold hover:bg-amber-500/30 mt-2";
+      btn.textContent = "Informar resultado da partida";
+      resultForm.appendChild(btn);
+      actions.appendChild(resultForm);
     }
     if (modal) {
       modal.classList.remove("hidden");

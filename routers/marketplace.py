@@ -371,7 +371,8 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
             "offers": offers,
             "wallet": wallet_summary,
             "supported_rooms": sorted(SUPPORTED_ROOMS),
-            "awaiting_result_count": awaiting_result_count,
+        "awaiting_result_count": awaiting_result_count,
+        "has_result_ids": has_result_ids,
             "requires_auth": True,
         },
     )
@@ -435,6 +436,8 @@ def update_player_offer(
     tournament = db.get(Tournament, offer.tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
+    if tournament.status == "Finalizado":
+        raise HTTPException(status_code=400, detail="Este torneio já foi finalizado e não pode mais ser editado.")
     if _is_offer_closed_by_start_time(offer):
         raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
 

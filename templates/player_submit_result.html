@@ -58,7 +58,7 @@
         <option value="">Selecione</option>
         {% for offer in offers %}
         {% set r = result_by_tournament.get(offer.tournament.id) %}
-        <option value="{{ offer.tournament.id }}">
+        <option value="{{ offer.tournament.id }}" {% if selected_tournament_id and selected_tournament_id == offer.tournament.id %}selected{% endif %}>
           #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}{% if r %} · {{ "Em revisão" if r.review_status == "UNDER_REVIEW" else ("Pendente" if r.review_status == "PENDING" else ("Aprovado" if r.review_status == "APPROVED" else "Rejeitado")) }}{% endif %}
         </option>
         {% endfor %}
@@ -86,41 +86,6 @@
           name="valor_premio"
           required
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        />
-      </div>
-    </div>
-
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Valor enviado para distribuição (US$)</label>
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        name="valor_enviado"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-      />
-    </div>
-
-    <div class="grid md:grid-cols-2 gap-4">
-      <div class="space-y-2">
-        <label class="text-xs text-gray-400">Screenshot do resultado</label>
-        <input
-          type="file"
-          name="resultado_print"
-          accept=".jpg,.jpeg,.png,.webp,.pdf"
-          required
-          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-emerald-400 file:px-3 file:py-1 file:text-black"
-        />
-      </div>
-      <div class="space-y-2">
-        <label class="text-xs text-gray-400">Comprovante de envio/pagamento</label>
-        <input
-          type="file"
-          name="comprovante_pagamento"
-          accept=".jpg,.jpeg,.png,.webp,.pdf"
-          required
-          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white file:mr-4 file:rounded-full file:border-0 file:bg-emerald-400 file:px-3 file:py-1 file:text-black"
         />
       </div>
     </div>
