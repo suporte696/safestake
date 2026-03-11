@@ -129,25 +129,9 @@
           <span class="font-mono text-emerald-400">{{ offer.vendido_pct }}% vendido</span>
         </div>
         <p class="text-xs text-gray-500">
-          {% if offer.escrow_status == "REFUNDED" %}
-          Status: <span class="font-mono text-amber-400">Cancelado</span>
-          {% else %}
           Escrow: <span class="font-mono">{{ offer.escrow_status }}</span> ·
           Torneio: <span class="font-mono">{{ offer.tournament.status }}</span>
-          {% endif %}
         </p>
-        {% set result_status = result_status_by_tournament.get(offer.tournament.id) %}
-        {% if result_status %}
-        <p class="text-xs">
-          {% if result_status == "UNDER_REVIEW" %}
-          <span class="px-2 py-0.5 rounded border border-amber-400/50 text-amber-400 bg-amber-400/10">Em revisão</span>
-          {% elif result_status == "REJECTED" %}
-          <span class="px-2 py-0.5 rounded border border-red-400/50 text-red-300 bg-red-400/10">Resultado rejeitado — revise e envie novamente</span>
-          {% elif result_status == "APPROVED" %}
-          <span class="px-2 py-0.5 rounded border border-emerald-400/50 text-emerald-400 bg-emerald-400/10">Resultado aprovado</span>
-          {% endif %}
-        </p>
-        {% endif %}
         <button
           type="button"
           class="player-offer-details w-full mt-2 px-3 py-2 rounded-lg border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition text-sm"
@@ -180,7 +164,7 @@
           <p class="text-xs text-gray-500">Este torneio foi finalizado e não pode mais ser editado.</p>
         </div>
         {% endif %}
-        {% if offer.investments and offer.tournament.status == "Aberto" %}
+        {% if offer.investments and offer.tournament.status == "Aberto" and offer.escrow_status != "REFUNDED" %}
         <div class="pt-2 border-t border-white/10 grid gap-2">
           {% if offer.escrow_status == "COMPLETE" %}
           <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
@@ -188,7 +172,7 @@
               Confirmar que vai jogar (liberar escrow)
             </button>
           </form>
-          {% elif offer.escrow_status == "COLLECTING" and offer.vendido_pct < offer.total_disponivel_pct %}
+          {% elif offer.escrow_status == "COLLECTING" %}
           <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
             <input type="hidden" name="force_partial" value="1" />
             <button type="submit" class="w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 text-sm font-semibold hover:bg-amber-500/30">
@@ -246,7 +230,6 @@
       totalPct: {{ offer.total_disponivel_pct }},
       vendidoPct: {{ offer.vendido_pct }},
       hasResult: {{ 'true' if offer.tournament.id in has_result_ids else 'false' }},
-      resultReviewStatus: {{ result_status_by_tournament.get(offer.tournament.id)|tojson if result_status_by_tournament.get(offer.tournament.id) else 'null' }},
       investments: [
         {% for inv in offer.investments %}
         { nome: {{ (inv.backer.nome if inv.backer else "Usuário #" ~ inv.backer_id)|tojson }}, pct: {{ inv.pct_comprada }}, amount: {{ inv.valor_investido }} }{% if not loop.last %},{% endif %}
@@ -267,13 +250,10 @@
     const offer = offersData.find(function(o) { return o.id === id; });
     if (!offer) return;
     if (titleEl) titleEl.textContent = offer.nome;
-    var statusLine = offer.escrowStatus === "REFUNDED"
-      ? "<p>Status: <span class=\"text-amber-400\">Cancelado</span></p>"
-      : "<p>Status: <span class=\"text-emerald-400\">" + (offer.status || "") + "</span> · Escrow: <span class=\"text-emerald-400\">" + (offer.escrowStatus || "") + "</span></p>";
     body.innerHTML = "<p class=\"text-gray-500\">Sala: " + (offer.sala || "") + "</p>" +
       "<p class=\"font-mono\">Buy-in US$ " + (Number(offer.buyin).toFixed(2)) + "</p>" +
       "<p class=\"text-gray-500\">Data/hora: " + (offer.dataHora || "—") + "</p>" +
-      statusLine +
+      "<p>Status: <span class=\"text-emerald-400\">" + (offer.status || "") + "</span> · Escrow: <span class=\"text-emerald-400\">" + (offer.escrowStatus || "") + "</span></p>" +
       "<p>" + (offer.vendidoPct || 0) + "% vendido de " + (offer.totalPct || 0) + "%</p>" +
       (offer.investments && offer.investments.length ? "<p class=\"text-gray-500 mt-2\">Apoiadores:</p><ul class=\"list-disc list-inside text-gray-400\">" +
         offer.investments.map(function(i) { return "<li>" + (i.nome || "") + " · " + (i.pct || 0) + "% · US$ " + (Number(i.amount).toFixed(2)) + "</li>"; }).join("") + "</ul>" : "<p class=\"text-gray-500\">Sem aportes ainda.</p>");
@@ -290,22 +270,8 @@
       });
     }
 
-    // Mensagem quando resultado está em revisão ou foi rejeitado
-    if (offer.resultReviewStatus === "UNDER_REVIEW") {
-      const msg = document.createElement("p");
-      msg.className = "text-xs text-amber-400 mt-2";
-      msg.textContent = "Resultado em revisão pelo admin.";
-      actions.appendChild(msg);
-    }
-    if (offer.resultReviewStatus === "REJECTED") {
-      const msg = document.createElement("p");
-      msg.className = "text-xs text-red-300 mt-2";
-      msg.textContent = "Seu último envio foi rejeitado. Revise e envie novamente.";
-      actions.appendChild(msg);
-    }
-    // Ação rápida para informar resultado (quando ainda não tem resultado ou quando foi rejeitado)
-    var canSubmitResult = offer.status !== "Aberto" && (!offer.hasResult || offer.resultReviewStatus === "REJECTED");
-    if (canSubmitResult) {
+    // Ação rápida para informar resultado da partida
+    if (offer.status !== "Aberto" && !offer.hasResult) {
       const resultForm = document.createElement("form");
       resultForm.method = "get";
       resultForm.action = "/player/results/new";
@@ -317,7 +283,7 @@
       const btn = document.createElement("button");
       btn.type = "submit";
       btn.className = "w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 text-sm font-semibold hover:bg-amber-500/30 mt-2";
-      btn.textContent = offer.resultReviewStatus === "REJECTED" ? "Enviar resultado novamente" : "Informar resultado da partida";
+      btn.textContent = "Informar resultado da partida";
       resultForm.appendChild(btn);
       actions.appendChild(resultForm);
     }

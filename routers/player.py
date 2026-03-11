@@ -40,7 +40,7 @@ def player_result_form(request: Request, db: Session = Depends(get_db)):
     )
     match_results = db.execute(result_stmt).scalars().all()
     result_by_tournament = {r.tournament_id: r for r in match_results}
-    offers_with_result = [(o, result_by_tournament[o.tournament.id]) for o in offers if o.tournament.id in result_by_tournament]
+    offers_with_result = [(o, result_by_tournament[o.tournament.id]) for o in offers if o.tournament and o.tournament.id in result_by_tournament]
     embed = request.query_params.get("embed") == "1"
     selected_tournament_id_param = request.query_params.get("tournament_id")
     try:
