@@ -246,7 +246,7 @@ def approve_withdrawal(
     )
     db.commit()
 
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?tab=saques&withdraw_success=1", status_code=303)
 
 
 @router.post("/admin/withdrawals/{withdrawal_id}/reject")
@@ -287,7 +287,7 @@ def reject_withdrawal(
     )
     db.commit()
 
-    return RedirectResponse(url="/admin/dashboard", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?tab=saques&withdraw_success=1", status_code=303)
 
 
 @router.post("/admin/profile/update")
@@ -683,6 +683,71 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
                         }
                     )
 
+    # Prévia da divisão para resultados em revisão (antes de aprovar)
+    preview_by_result: dict[int, list[dict]] = {}
+    for pending in pending_results:
+        supporters = supporters_by_result.get(pending.id, [])
+        if not supporters:
+            continue
+        try:
+            total_sent = q_money(Decimal(str(pending.valor_enviado)))
+        except (InvalidOperation, TypeError):
+            continue
+        if total_sent <= 0:
+            continue
+
+        items: list[dict] = []
+        backer_gross_total = Decimal("0")
+        fee_total = Decimal("0")
+
+        for s in supporters:
+            try:
+                pct = Decimal(str(s.get("pct") or 0))
+                invested_amount = q_money(Decimal(str(s.get("amount") or 0)))
+            except InvalidOperation:
+                continue
+            gross_amount = q_money(total_sent * pct / Decimal("100"))
+            gain_amount = gross_amount - invested_amount
+            if gain_amount < 0:
+                gain_amount = Decimal("0")
+            platform_fee = q_money(gain_amount * FEE_RATE)
+            net_amount = gross_amount - platform_fee
+
+            backer_gross_total += gross_amount
+            fee_total += platform_fee
+
+            items.append(
+                {
+                    "role": "Apoiador",
+                    "name": s.get("name") or "-",
+                    "net_amount": net_amount,
+                    "platform_fee": platform_fee,
+                }
+            )
+
+        backer_gross_total = q_money(backer_gross_total)
+        fee_total = q_money(fee_total)
+        player_amount = q_money(total_sent - backer_gross_total)
+
+        items.append(
+            {
+                "role": "Jogador",
+                "name": pending.player.nome if pending.player else "Jogador",
+                "net_amount": player_amount,
+                "platform_fee": Decimal("0"),
+            }
+        )
+        if fee_total > 0:
+            items.append(
+                {
+                    "role": "Plataforma",
+                    "name": "SAFE STAKE",
+                    "net_amount": fee_total,
+                    "platform_fee": fee_total,
+                }
+            )
+        preview_by_result[pending.id] = items
+
     embed = request.query_params.get("embed") == "1"
     return templates.TemplateResponse(
         "admin_result_review.html",
@@ -694,6 +759,7 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
             "reviewed_results": reviewed_results,
             "distribution_by_result": distribution_by_result,
             "supporters_by_result": supporters_by_result,
+            "preview_by_result": preview_by_result,
             "requires_auth": True,
             "embed": embed,
         },

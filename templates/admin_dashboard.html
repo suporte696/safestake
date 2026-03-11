@@ -10,7 +10,7 @@
   </div>
 
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
-    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-tab="inicio">Início</button>
+    <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-tab="inicio">Perfil</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="novo-torneio">Novo torneio</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="torneios">Torneios ativos</button>
     <button type="button" class="admin-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-tab="acerto">Acerto de Contas</button>
@@ -372,6 +372,11 @@
       <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
       <span class="text-xs text-gray-400">{{ withdrawal_requests|length }} recentes</span>
     </div>
+    {% if request.query_params.get("withdraw_success") == "1" %}
+    <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+      Solicitação de saque atualizada com sucesso.
+    </div>
+    {% endif %}
     {% if not withdrawal_requests %}
     <p class="text-sm text-gray-500">Sem solicitações registradas.</p>
     {% else %}

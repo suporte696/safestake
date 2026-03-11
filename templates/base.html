@@ -102,10 +102,18 @@
               US$ {{ "%.2f"|format(wallet.saldo_disponivel) if wallet else "0.00" }}
             </span>
           </div>
-          <div class="relative">
+          <div class="relative flex items-center gap-2">
+            {% if user.profile_photo_url %}
+            <img
+              src="{{ user.profile_photo_url }}"
+              alt="Foto de perfil"
+              class="w-9 h-9 rounded-full border border-emerald-400/60 object-cover"
+            />
+            {% else %}
             <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
               {{ user.nome[:1]|upper }}
             </div>
+            {% endif %}
             <button
               id="viewAsToggle"
               type="button"

@@ -68,6 +68,25 @@
             <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_enviado) }}</p>
           </div>
         </div>
+
+        {% set preview = preview_by_result.get(result.id) %}
+        {% if preview %}
+        <div class="border border-emerald-400/40 rounded-xl p-4 bg-emerald-400/5 text-xs md:text-sm space-y-2">
+          <p class="text-emerald-300 font-medium">Prévia da divisão do pagamento (antes de aprovar)</p>
+          <div class="grid md:grid-cols-3 gap-2">
+            {% for item in preview %}
+            <div class="border border-white/10 rounded-lg px-3 py-2">
+              <p class="text-gray-400">{{ item.role }}</p>
+              <p class="text-white truncate">{{ item.name }}</p>
+              <p class="font-mono text-emerald-400 mt-1">Líquido US$ {{ "%.2f"|format(item.net_amount) }}</p>
+              {% if item.platform_fee and item.platform_fee > 0 %}
+              <p class="text-[11px] text-gray-400">Fee US$ {{ "%.2f"|format(item.platform_fee) }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
         {% if result.review_status == "UNDER_REVIEW" %}
         <form method="post" action="/admin/results/{{ result.id }}/update-values" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 flex flex-wrap items-end gap-4">
           {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
