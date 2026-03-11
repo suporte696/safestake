@@ -339,7 +339,8 @@ def login(
         )
 
     request.session["user_id"] = user.id
-    return RedirectResponse(url="/dashboard", status_code=303)
+    # Redireciona para a página principal de marketplace após login
+    return RedirectResponse(url="/", status_code=303)
 
 
 @router.get("/register", response_class=HTMLResponse)

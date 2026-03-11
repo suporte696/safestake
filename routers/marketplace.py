@@ -217,6 +217,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
             .where(Investment.backer_id == user.id)
             .options(joinedload(Investment.offer).joinedload(StakeOffer.tournament))
             .options(joinedload(Investment.offer).joinedload(StakeOffer.player))
+            .order_by(Investment.id.desc())
         )
         investments = db.execute(stmt).scalars().all()
 

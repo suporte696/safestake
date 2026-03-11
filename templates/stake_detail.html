@@ -206,6 +206,10 @@
   const maxInvestAmount = hasWallet ? Math.min(maxOfferAmount, Math.max(0, walletAvailable)) : maxOfferAmount;
   const input = document.getElementById("investmentAmount");
   const estimatedPct = document.getElementById("estimatedPct");
+  const estimatedSummary = document.createElement("p");
+  estimatedSummary.className = "text-xs text-gray-400 mt-1";
+  estimatedSummary.id = "estimatedSummary";
+  estimatedPct?.parentElement?.appendChild(estimatedSummary);
   const confirmButton = document.getElementById("confirmInvest");
   const investmentMaxHint = document.getElementById("investmentMaxHint");
   const investmentWarning = document.getElementById("investmentWarning");
@@ -224,16 +228,16 @@
     if (!amount || amount <= 0) {
       return { valid: false, reason: "Informe um valor maior que zero." };
     }
-    if (!maxInvestAmount || maxInvestAmount <= 0 || availablePct <= 0) {
-      return { valid: false, reason: "Esta oferta não possui cota disponível no momento." };
-    }
     if (isClosed) {
       return { valid: false, reason: "Oferta encerrada. Não é mais possível apoiar." };
     }
-    if (amount > maxInvestAmount) {
+    if (!maxOfferAmount || maxOfferAmount <= 0 || availablePct <= 0) {
+      return { valid: false, reason: "Esta oferta não possui cota disponível no momento." };
+    }
+    if (amount > maxOfferAmount) {
       return {
         valid: false,
-        reason: `Valor acima do máximo disponível para esta oferta (${formatUSD(maxInvestAmount)}).`,
+        reason: `Valor acima do máximo disponível para esta oferta (${formatUSD(maxOfferAmount)}).`,
       };
     }
     return { valid: true, reason: "" };
@@ -260,6 +264,10 @@
     investmentWarning.classList.add("hidden");
     const pct = (amount / (buyin * markup)) * 100;
     estimatedPct.textContent = formatPct(pct);
+    const totalWithMarkup = amount * markup;
+    if (estimatedSummary) {
+      estimatedSummary.textContent = `Você paga ${formatUSD(amount)} e joga como se investisse ${formatUSD(totalWithMarkup)} (markup aplicado).`;
+    }
   };
 
   if (input) {
@@ -302,12 +310,6 @@
     }
     if (!amount || amount <= 0) {
       window.showToast("Informe um valor válido.", "error");
-      return;
-    }
-    if (amount > maxInvestAmount) {
-      window.showToast(`Máximo permitido para esta oferta: ${formatUSD(maxInvestAmount)}.`, "error");
-      confirmButton.disabled = true;
-      confirmButton.classList.add("opacity-60", "cursor-not-allowed");
       return;
     }
     try {

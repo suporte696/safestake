@@ -76,6 +76,7 @@
   <nav class="flex gap-2 border-b border-white/10 pb-2" aria-label="Abas do painel">
     <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition bg-emerald-400/20 text-emerald-400 border border-b-0 border-emerald-400/50" data-tab="inicio">Início</button>
     <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="historico">Histórico de Stakes</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="saques">Histórico de Saques</button>
     <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="propostas">Minhas Propostas</button>
   </nav>
   {% endif %}
@@ -274,6 +275,53 @@
       </div>
     </div>
   </div>
+
+  {% if user.tipo == "apoiador" %}
+  <div id="tab-saques" class="dashboard-tab-panel hidden space-y-8">
+    <div class="bg-black border border-white/10 rounded-2xl p-6">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="font-title text-xl uppercase">Histórico de Saques</h2>
+        <span class="text-xs text-gray-400">Últimas 10 solicitações</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left text-gray-300">
+          <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+            <tr>
+              <th class="py-3">Valor</th>
+              <th class="py-3">PIX</th>
+              <th class="py-3">Status</th>
+              <th class="py-3">Observação admin</th>
+              <th class="py-3">Data</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            {% for wr in withdrawal_requests %}
+            <tr>
+              <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
+              <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
+              <td class="py-3">
+                {% if wr.status == "PENDING" %}
+                <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
+                {% elif wr.status == "APPROVED" %}
+                <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aprovado</span>
+                {% else %}
+                <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Rejeitado</span>
+                {% endif %}
+              </td>
+              <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
+              <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m %H:%M") if wr.created_at else "-" }}</td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="py-6 text-center text-gray-500">Nenhuma solicitação de saque registrada.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if user.tipo == "apoiador" %}
   <div id="tab-propostas" class="dashboard-tab-panel hidden space-y-8">
