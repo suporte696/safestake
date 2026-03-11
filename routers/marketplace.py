@@ -187,6 +187,28 @@ def serialize_bid(bid: StakeBid) -> dict:
     }
 
 
+@router.get("/view-as/admin")
+def view_as_admin(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if user.tipo != "admin":
+        return RedirectResponse(url="/dashboard", status_code=303)
+    request.session["active_profile"] = "admin"
+    return RedirectResponse(url="/admin/dashboard", status_code=303)
+
+
+@router.get("/view-as/player")
+def view_as_player(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if user.tipo != "admin":
+        return RedirectResponse(url="/dashboard", status_code=303)
+    request.session["active_profile"] = "player"
+    return RedirectResponse(url="/player/offers", status_code=303)
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     try:
@@ -198,7 +220,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=303)
+    active_profile = request.session.get("active_profile")
     if user.tipo == "admin":
+        if active_profile == "player":
+            return RedirectResponse(url="/player/offers", status_code=303)
         return RedirectResponse(url="/admin/dashboard", status_code=303)
     if user.tipo == "jogador":
         return RedirectResponse(url="/player/offers", status_code=303)

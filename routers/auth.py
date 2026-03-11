@@ -24,6 +24,7 @@ router = APIRouter()
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 session_cookie = APIKeyCookie(name="safe_stake_session", auto_error=False)
 REGISTER_PURPOSE = "register"
+RESET_PURPOSE = "reset_password"
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
@@ -141,13 +142,13 @@ def hash_verification_code(email: str, purpose: str, code: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def get_pending_verification_from_session(request: Request, db: Session) -> EmailVerificationCode | None:
+def get_pending_verification_from_session(request: Request, db: Session, *, purpose: str = REGISTER_PURPOSE) -> EmailVerificationCode | None:
     verification_id = request.session.get("pending_verification_id")
     if not verification_id:
         return None
     stmt = select(EmailVerificationCode).where(
         EmailVerificationCode.id == verification_id,
-        EmailVerificationCode.purpose == REGISTER_PURPOSE,
+        EmailVerificationCode.purpose == purpose,
         EmailVerificationCode.consumed_at.is_(None),
     )
     verification = db.execute(stmt).scalars().first()
@@ -268,6 +269,8 @@ def login_form(request: Request, db: Session = Depends(get_db)):
     info = None
     if request.query_params.get("registered") == "1":
         info = "Cadastro confirmado com sucesso. Entre com seu email e senha."
+    elif request.query_params.get("reset") == "1":
+        info = "Senha redefinida com sucesso. Entre com sua nova senha."
     return templates.TemplateResponse(
         "login.html",
         {"request": request, "user": user, "wallet": get_wallet_summary(user), "info": info},
@@ -301,16 +304,208 @@ def forgot_password_submit(
         return RedirectResponse(url="/dashboard", status_code=303)
 
     normalized_email = email.strip().lower()
-    _ = db.execute(select(User.id).where(User.email == normalized_email)).scalars().first()
-    return templates.TemplateResponse(
+    target_user = db.execute(select(User).where(User.email == normalized_email)).scalars().first()
+
+    if not target_user:
+        # Mantém a mesma mensagem genérica para não vazar existência do email
+        return templates.TemplateResponse(
         "login.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "info": "Se o email existir, enviaremos instruções de recuperação.",
+                "show_forgot_password": True,
+                "email": normalized_email,
+            },
+        )
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+def reset_password_form(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+    verification = get_pending_verification_from_session(request, db, purpose=RESET_PURPOSE)
+    if not verification:
+        return RedirectResponse(url="/forgot-password", status_code=303)
+    return templates.TemplateResponse(
+        "reset_password.html",
         {
             "request": request,
             "user": None,
             "wallet": None,
-            "info": "Se o email existir, enviaremos instruções de recuperação.",
-            "show_forgot_password": True,
+            "email": verification.email,
+            "info": None,
+            "error": None,
+        },
+    )
+
+
+@router.post("/reset-password", response_class=HTMLResponse)
+def reset_password_submit(
+    request: Request,
+    email: str = Form(...),
+    code: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if user:
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    verification = get_pending_verification_from_session(request, db, purpose=RESET_PURPOSE)
+    if not verification or verification.email.strip().lower() != email.strip().lower():
+        return RedirectResponse(url="/forgot-password", status_code=303)
+
+    code_digits = "".join(char for char in code if char.isdigit())
+    if len(code_digits) != 6:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "email": email,
+                "info": None,
+                "error": "Informe o código de 6 dígitos.",
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    if verification.attempts >= verification.max_attempts or verification.expires_at < now:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "error": "Código expirado ou tentativas excedidas. Refaça o fluxo de recuperação.",
+            },
+            status_code=400,
+        )
+
+    submitted_hash = hash_verification_code(verification.email, verification.purpose, code_digits)
+    if submitted_hash != verification.code_hash:
+        verification.attempts += 1
+        db.commit()
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "email": email,
+                "info": None,
+                "error": "Código inválido. Verifique e tente novamente.",
+            },
+            status_code=400,
+        )
+
+    if new_password != confirm_password:
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "email": email,
+                "info": None,
+                "error": "A confirmação da nova senha não confere.",
+            },
+            status_code=400,
+        )
+    if not is_strong_password(new_password):
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "email": email,
+                "info": None,
+                "error": "A nova senha deve ter 8+ caracteres, letras e números.",
+            },
+            status_code=400,
+        )
+
+    target_user = db.execute(select(User).where(User.email == email.strip().lower())).scalars().first()
+    if not target_user:
+        verification.consumed_at = now
+        db.commit()
+        request.session.pop("pending_verification_id", None)
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "user": None,
+                "wallet": None,
+                "error": "Usuário não encontrado para este email.",
+            },
+            status_code=400,
+        )
+
+    target_user.password_hash = get_password_hash(new_password)
+    verification.consumed_at = now
+    verification.attempts += 1
+    db.commit()
+    request.session.pop("pending_verification_id", None)
+
+    return RedirectResponse(url="/login?reset=1", status_code=303)
+
+    # Cria código de redefinição
+    now = datetime.now(timezone.utc)
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    code_hash = hash_verification_code(normalized_email, RESET_PURPOSE, code)
+
+    # Invalida códigos antigos de reset
+    active_codes_stmt = select(EmailVerificationCode).where(
+        EmailVerificationCode.email == normalized_email,
+        EmailVerificationCode.purpose == RESET_PURPOSE,
+        EmailVerificationCode.consumed_at.is_(None),
+    )
+    for item in db.execute(active_codes_stmt).scalars().all():
+        item.consumed_at = now
+
+    verification = EmailVerificationCode(
+        email=normalized_email,
+        purpose=RESET_PURPOSE,
+        code_hash=code_hash,
+        registration_payload=None,
+        attempts=0,
+        max_attempts=REGISTER_MAX_ATTEMPTS,
+        expires_at=now + timedelta(minutes=REGISTER_CODE_TTL_MINUTES),
+        consumed_at=None,
+        created_at=now,
+    )
+    db.add(verification)
+    db.commit()
+    db.refresh(verification)
+    request.session["pending_verification_id"] = verification.id
+
+    # Reutiliza o mesmo formato de email de verificação
+    email_sent = send_verification_code_email(normalized_email, code)
+    info_msg = "Enviamos um código de verificação para redefinir sua senha."
+    if not email_sent:
+        allow_fallback = os.getenv("ALLOW_LOCAL_EMAIL_FALLBACK", "true").strip().lower() in {"1", "true", "yes", "on"}
+        if allow_fallback:
+            info_msg = f"Modo teste: use o código {code} para redefinir sua senha."
+        else:
+            info_msg = "Não conseguimos enviar o email de recuperação agora. Tente novamente em instantes."
+
+    return templates.TemplateResponse(
+        "reset_password.html",
+        {
+            "request": request,
+            "user": None,
+            "wallet": None,
             "email": normalized_email,
+            "info": info_msg,
+            "error": None,
         },
     )
 
@@ -480,7 +675,7 @@ def register_verify_form(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    verification = get_pending_verification_from_session(request, db)
+    verification = get_pending_verification_from_session(request, db, purpose=REGISTER_PURPOSE)
     if not verification:
         return RedirectResponse(url="/register", status_code=303)
     return render_register_verify(request, verification)
@@ -492,7 +687,7 @@ def register_verify_submit(
     code: str = Form(...),
     db: Session = Depends(get_db),
 ):
-    verification = get_pending_verification_from_session(request, db)
+    verification = get_pending_verification_from_session(request, db, purpose=REGISTER_PURPOSE)
     if not verification:
         return RedirectResponse(url="/register", status_code=303)
 
@@ -574,7 +769,7 @@ def register_resend_code(request: Request, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if user:
         return RedirectResponse(url="/dashboard", status_code=303)
-    verification = get_pending_verification_from_session(request, db)
+    verification = get_pending_verification_from_session(request, db, purpose=REGISTER_PURPOSE)
     if not verification:
         return RedirectResponse(url="/register", status_code=303)
 
