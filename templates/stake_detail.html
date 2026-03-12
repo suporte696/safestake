@@ -207,7 +207,7 @@
   const input = document.getElementById("investmentAmount");
   const estimatedPct = document.getElementById("estimatedPct");
   const estimatedSummary = document.createElement("p");
-  estimatedSummary.className = "text-xs text-gray-400 mt-1";
+  estimatedSummary.className = "text-xs text-gray-400 mt-2 leading-relaxed";
   estimatedSummary.id = "estimatedSummary";
   estimatedPct?.parentElement?.appendChild(estimatedSummary);
   const confirmButton = document.getElementById("confirmInvest");
@@ -264,9 +264,16 @@
     investmentWarning.classList.add("hidden");
     const pct = (amount / (buyin * markup)) * 100;
     estimatedPct.textContent = formatPct(pct);
-    const totalWithMarkup = amount * markup;
+
+    // Detalhamento solicitado pelo cliente:
+    // Buy-in (cota base), valor de markup e total do investimento
     if (estimatedSummary) {
-      estimatedSummary.textContent = `Você paga ${formatUSD(amount)} e joga como se investisse ${formatUSD(totalWithMarkup)} (markup aplicado).`;
+      const baseAmount = amount / markup;
+      const markupFee = amount - baseAmount;
+      estimatedSummary.innerHTML =
+        `Buy-in: <span class="font-mono text-emerald-300">${formatUSD(baseAmount)}</span><br>` +
+        `Markup ${markup.toFixed(2)}: <span class="font-mono text-emerald-300">${formatUSD(markupFee)}</span><br>` +
+        `Total do investimento: <span class="font-mono text-emerald-300">${formatUSD(amount)}</span>`;
     }
   };
 
