@@ -39,9 +39,25 @@ def q_money(value: Decimal) -> Decimal:
 
 
 def get_wallet_for_update(db: Session, user_id: int) -> Wallet:
-    wallet = db.execute(select(Wallet).where(Wallet.user_id == user_id).with_for_update()).scalars().first()
+    """
+    Garante que a carteira exista e retorna já bloqueada para escrita.
+    Se não existir, cria uma carteira zerada para o usuário.
+    """
+    wallet = db.execute(
+        select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+    ).scalars().first()
     if not wallet:
-        raise HTTPException(status_code=400, detail=f"Carteira não encontrada para usuário {user_id}.")
+        wallet = Wallet(
+            user_id=user_id,
+            saldo_disponivel=Decimal("0"),
+            saldo_bloqueado=Decimal("0"),
+            saldo_em_jogo=Decimal("0"),
+        )
+        db.add(wallet)
+        db.flush()
+        wallet = db.execute(
+            select(Wallet).where(Wallet.user_id == user_id).with_for_update()
+        ).scalars().first()
     return wallet
 
 
