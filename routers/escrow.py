@@ -105,13 +105,16 @@ def release_offer_escrow_to_player(db: Session, offer: StakeOffer) -> dict:
     escrow = get_offer_escrow_locked(db, offer)
     if escrow.status != "COMPLETE":
         return {"released_total": q_money(Decimal("0"))}
+    # Evita dupla liberação em chamadas repetidas: após iniciar/finalizar, o release já ocorreu.
+    if offer.tournament and offer.tournament.status != "Aberto":
+        return {"released_total": q_money(Decimal("0"))}
 
     player_wallet = _ensure_wallet(db, offer.player_id, with_lock=True)
 
     collected = q_money(Decimal(str(escrow.total_collected or 0)))
     player_em_jogo = q_money(Decimal(str(player_wallet.saldo_em_jogo or 0)))
     released_total = q_money(min(collected, player_em_jogo))
-    if collected > 0 and player_em_jogo > 0 and released_total < collected:
+    if collected > 0 and released_total < collected:
         logger.warning(
             "release_offer_escrow: reconciling mismatch em_jogo (%s) < collected (%s) for offer_id=%s player_id=%s",
             player_em_jogo, collected, offer.id, offer.player_id,

@@ -9,6 +9,11 @@
     Escrow liberado para o jogador e torneio marcado como "Jogando".
   </div>
   {% endif %}
+  {% if request.query_params.get("play_error") == "no_escrow" %}
+  <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+    Não há saldo em escrow liberável para esta oferta. Se quiser iniciar mesmo sem atingir a meta, use "Iniciar partida (mesmo sem 100%)".
+  </div>
+  {% endif %}
   {% if request.query_params.get("declined") == "1" %}
   <div class="border border-amber-500/40 text-amber-300 bg-amber-500/10 px-4 py-3 rounded-xl text-sm">
     Você informou que não vai jogar. Os aportes foram estornados aos apoiadores.

@@ -536,12 +536,17 @@ def confirm_player_will_play(
     else:
         result = release_offer_escrow_to_player(db, offer)
     if Decimal(str(result["released_total"])) <= 0:
-        raise HTTPException(
-            status_code=400,
-            detail="Não há saldo em escrow liberável. Se quiser iniciar mesmo sem atingir a meta, use \"Iniciar partida (mesmo sem 100%)\".",
-        )
+        # Para submit vindo de formulário HTML, evita tela branca de erro JSON.
+        accept_header = (request.headers.get("accept") or "").lower()
+        wants_json = "application/json" in accept_header and "text/html" not in accept_header
+        if wants_json:
+            raise HTTPException(
+                status_code=400,
+                detail="Não há saldo em escrow liberável. Se quiser iniciar mesmo sem atingir a meta, use \"Iniciar partida (mesmo sem 100%)\".",
+            )
+        return RedirectResponse(url="/player/offers?tab=ofertas&play_error=no_escrow", status_code=303)
     db.commit()
-    return RedirectResponse(url="/player/offers?playing=1", status_code=303)
+    return RedirectResponse(url="/player/offers?tab=ofertas&playing=1", status_code=303)
 
 
 @router.post("/player/offers/{offer_id}/decline-play")
