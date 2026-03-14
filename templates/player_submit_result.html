@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Enviar Resultado | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="max-w-3xl mx-auto space-y-6">
+  <div class="space-y-2">
+    <h1 class="font-title text-3xl uppercase">Enviar Resultado da Partida</h1>
+    <p class="text-gray-400 text-sm">Após o envio, o resultado fica em revisão do admin (você pode corrigir antes da aprovação).</p>
+  </div>
+
+  {% if request.query_params.get("sent") == "1" %}
+  <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm">
+    Resultado enviado com sucesso e marcado como em revisão.
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  {% if offers_with_result %}
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-3">
+    <h2 class="font-title text-lg uppercase text-gray-300">Status dos resultados enviados</h2>
+    <p class="text-xs text-gray-500">Evidência visual do status de revisão de cada resultado.</p>
+    <ul class="space-y-2">
+      {% for offer, result in offers_with_result %}
+      <li class="flex items-center justify-between gap-4 p-3 rounded-xl border border-white/10 bg-[#0b0b0b]">
+        <span class="text-sm text-gray-300">#{{ offer.tournament.id }} · {{ offer.tournament.nome }}</span>
+        {% if result.review_status == "UNDER_REVIEW" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-amber-400/50 text-amber-400 bg-amber-400/10">Em revisão</span>
+        {% elif result.review_status == "PENDING" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-blue-400/50 text-blue-300 bg-blue-500/10">Pendente</span>
+        {% elif result.review_status == "APPROVED" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-emerald-400/50 text-emerald-400 bg-emerald-400/10">Aprovado</span>
+        {% elif result.review_status == "REJECTED" %}
+        <span class="px-3 py-1 rounded-full text-xs font-medium border border-red-400/50 text-red-400 bg-red-400/10">Rejeitado</span>
+        {% else %}
+        <span class="px-3 py-1 rounded-full text-xs text-gray-400">{{ result.review_status }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <form method="post" action="/player/results" enctype="multipart/form-data" class="bg-black border border-white/10 rounded-2xl p-6 grid gap-4">
+    {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Torneio</label>
+      <select
+        name="tournament_id"
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        required
+      >
+        <option value="">Selecione</option>
+        {% for offer in offers %}
+        {% set r = result_by_tournament.get(offer.tournament.id) %}
+        <option value="{{ offer.tournament.id }}" {% if selected_tournament_id and selected_tournament_id == offer.tournament.id %}selected{% endif %}>
+          #{{ offer.tournament.id }} · {{ offer.tournament.nome }} · {{ offer.tournament.plataforma }}{% if r %} · {{ "Em revisão" if r.review_status == "UNDER_REVIEW" else ("Pendente" if r.review_status == "PENDING" else ("Aprovado" if r.review_status == "APPROVED" else "Rejeitado")) }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Posição final</label>
+        <input
+          type="number"
+          min="1"
+          step="1"
+          name="posicao_final"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Valor prêmio (US$)</label>
+        <input
+          type="number"
+          min="0"
+          step="0.01"
+          name="valor_premio"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+      </div>
+    </div>
+
+    <button
+      type="submit"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Enviar para revisão
+    </button>
+  </form>
+</section>
+{% endblock %}

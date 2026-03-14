@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Resultados | SAFE STAKE{% endblock %}
+
+{% block content %}
+<section class="space-y-8">
+  <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="space-y-2">
+      <h1 class="font-title text-3xl uppercase">Revisão de Resultados</h1>
+      <p class="text-sm text-gray-400">
+        Aprove/rejeite resultados enviados pelos jogadores e execute a distribuição financeira.
+      </p>
+    </div>
+    {% if not embed %}
+    <a
+      href="/admin/dashboard"
+      class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+    >
+      Voltar ao painel
+    </a>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h2 class="font-title text-xl uppercase">Em revisão</h2>
+      <span class="text-xs text-gray-400">{{ pending_results|length }} aguardando decisão</span>
+    </div>
+
+    {% if not pending_results %}
+    <p class="text-sm text-gray-500">Sem resultados em revisão no momento.</p>
+    {% else %}
+    <div class="grid gap-4">
+      {% for result in pending_results %}
+      <article class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-400">Torneio #{{ result.tournament.id }} · {{ result.tournament.plataforma or "Sala" }} · Buy-in US$ {{ "%.2f"|format(result.tournament.buyin) }}</p>
+            <p class="text-lg font-semibold">{{ result.tournament.nome }}</p>
+            <p class="text-xs text-gray-400">
+              Jogador: {{ result.player.nome }} · Posição {{ result.posicao_final }}
+            </p>
+          </div>
+          <p class="text-xs text-gray-500">
+            Enviado em {{ result.submitted_at.strftime("%d/%m/%Y %H:%M") if result.submitted_at else "-" }}
+          </p>
+        </div>
+
+        {% set supporters = supporters_by_result.get(result.id, []) %}
+        {% if supporters %}
+        <div class="rounded-xl border border-white/10 p-3 bg-black/40">
+          <p class="text-xs text-gray-500 uppercase tracking-wider mb-2">Quem apoiou (nicks e valor)</p>
+          <ul class="space-y-1 text-sm">
+            {% for s in supporters %}
+            <li class="flex justify-between"><span>{{ s.name }}</span><span class="font-mono text-emerald-400">{{ "%.2f"|format(s.pct) }}% · US$ {{ "%.2f"|format(s.amount) }}</span></li>
+            {% endfor %}
+          </ul>
+        </div>
+        {% endif %}
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <div class="border border-white/10 rounded-xl p-4">
+            <p class="text-gray-400">Valor prêmio</p>
+            <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_premio) }}</p>
+          </div>
+          <div class="border border-white/10 rounded-xl p-4">
+            <p class="text-gray-400">Valor enviado para distribuição</p>
+            <p class="font-mono text-lg">US$ {{ "%.2f"|format(result.valor_enviado) }}</p>
+          </div>
+        </div>
+
+        {% set preview = preview_by_result.get(result.id) %}
+        {% if preview %}
+        <div class="border border-emerald-400/40 rounded-xl p-4 bg-emerald-400/5 text-xs md:text-sm space-y-2">
+          <p class="text-emerald-300 font-medium">Prévia da divisão do pagamento (antes de aprovar)</p>
+          <div class="grid md:grid-cols-3 gap-2">
+            {% for item in preview %}
+            <div class="border border-white/10 rounded-lg px-3 py-2">
+              <p class="text-gray-400">{{ item.role }}</p>
+              <p class="text-white truncate">{{ item.name }}</p>
+              <p class="font-mono text-emerald-400 mt-1">Líquido US$ {{ "%.2f"|format(item.net_amount) }}</p>
+              {% if item.platform_fee and item.platform_fee > 0 %}
+              <p class="text-[11px] text-gray-400">Fee US$ {{ "%.2f"|format(item.platform_fee) }}</p>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        {% if result.review_status == "UNDER_REVIEW" %}
+        <form method="post" action="/admin/results/{{ result.id }}/update-values" class="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 flex flex-wrap items-end gap-4">
+          {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+          <p class="text-amber-300 text-sm w-full">Editar valores antes de aprovar (em revisão):</p>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Valor prêmio (US$)</label>
+            <input type="number" name="valor_premio" step="0.01" min="0" value="{{ result.valor_premio }}" class="bg-black border border-white/20 rounded-lg px-3 py-2 text-white font-mono w-32" />
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">Valor enviado (US$)</label>
+            <input type="number" name="valor_enviado" step="0.01" min="0" value="{{ result.valor_enviado }}" class="bg-black border border-white/20 rounded-lg px-3 py-2 text-white font-mono w-32" />
+          </div>
+          <button type="submit" class="px-4 py-2 rounded-lg border border-emerald-400/50 text-emerald-400 text-sm hover:bg-emerald-400/10">Salvar valores</button>
+        </form>
+        {% endif %}
+
+        <div class="grid md:grid-cols-2 gap-4 text-sm">
+          <a href="{{ result.print_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir screenshot do resultado
+          </a>
+          <a href="{{ result.comprovante_url }}" target="_blank" class="rounded-xl border border-white/10 p-4 hover:border-emerald-400 transition">
+            Abrir comprovante de envio
+          </a>
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+          <form method="post" action="/admin/results/{{ result.id }}/approve">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <button class="px-4 py-2 rounded-full bg-emerald-400 text-black font-semibold">
+              Aprovar e distribuir
+            </button>
+          </form>
+          <form method="post" action="/admin/results/{{ result.id }}/reject" class="flex gap-2">
+            {% if embed %}<input type="hidden" name="embed" value="1">{% endif %}
+            <input
+              type="text"
+              name="reason"
+              placeholder="Motivo da rejeição (opcional)"
+              class="bg-black border border-white/10 rounded-full px-3 py-2 text-xs w-64"
+            />
+            <button class="px-4 py-2 rounded-full border border-red-500 text-red-300 hover:bg-red-500/10">
+              Rejeitar
+            </button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="bg-black border border-white/10 rounded-2xl p-6 space-y-4">
+    <h2 class="font-title text-xl uppercase">Histórico recente</h2>
+    {% if not reviewed_results %}
+    <p class="text-sm text-gray-500">Sem resultados revisados ainda.</p>
+    {% else %}
+    <div class="grid gap-3">
+      {% for result in reviewed_results %}
+      <article class="border border-white/10 rounded-xl p-4 space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold">{{ result.tournament.nome }}</p>
+            <p class="text-xs text-gray-500">#{{ result.tournament.id }} · {{ result.tournament.plataforma or "-" }} · Jogador: {{ result.player.nome }}</p>
+          </div>
+          <span class="text-xs px-3 py-1 rounded-full border {% if result.review_status == 'APPROVED' %}border-emerald-400/50 text-emerald-400{% elif result.review_status == 'UNDER_REVIEW' %}border-amber-400/50 text-amber-400{% elif result.review_status == 'PENDING' %}border-blue-400/50 text-blue-300{% else %}border-red-500/50 text-red-300{% endif %}">
+            {{ "Em revisão" if result.review_status == "UNDER_REVIEW" else ("Pendente" if result.review_status == "PENDING" else ("Aprovado" if result.review_status == "APPROVED" else "Rejeitado")) }}
+          </span>
+        </div>
+
+        {% set supporters = supporters_by_result.get(result.id, []) %}
+        {% if supporters %}
+        <div class="text-xs rounded-lg border border-white/10 p-2 bg-black/40">
+          <p class="text-gray-500 mb-1">Quem apoiou:</p>
+          {% for s in supporters %}<span class="font-mono text-emerald-400">{{ s.name }} {{ "%.2f"|format(s.pct) }}% (US$ {{ "%.2f"|format(s.amount) }})</span>{% if not loop.last %} · {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+
+        {% set items = distribution_by_result.get(result.id, []) %}
+        {% if items %}
+        <div class="grid md:grid-cols-3 gap-2 text-xs">
+          {% for item in items %}
+          <div class="border border-white/10 rounded-lg px-3 py-2">
+            <p class="text-gray-400">{{ item.recipient_type }}</p>
+            <p class="font-mono">Líquido US$ {{ "%.2f"|format(item.net_amount) }}</p>
+            {% if item.platform_fee and item.platform_fee > 0 %}
+            <p class="text-gray-500">Fee US$ {{ "%.2f"|format(item.platform_fee) }}</p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if result.rejection_reason %}
+        <p class="text-xs text-red-300">Motivo: {{ result.rejection_reason }}</p>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
