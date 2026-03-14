@@ -6,16 +6,11 @@
 <section class="space-y-10">
   <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
     <div class="space-y-4">
-      <img
-        src="/static/img/safestake-01.svg"
-        alt="SAFE STAKE"
-        class="h-6"
-      />
       <h1 class="font-title text-3xl md:text-4xl uppercase">
         Ofertas de staking <span class="text-emerald-400">ativas</span>
       </h1>
       <p class="text-gray-300 max-w-xl">
-        Apoie jogadores profissionais, compre cotas com markup transparente e acompanhe seus resultados em tempo real.
+        Apoie jogadores profissionais, apoie partidas com markup transparente e acompanhe seus resultados em tempo real.
       </p>
     </div>
     <div class="flex items-center gap-4">
@@ -31,85 +26,109 @@
         href="/dashboard"
         class="px-5 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition"
       >
-        Ver histórico
+        Meus Apoios
       </a>
     </div>
   </div>
 
   <div class="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
     {% for offer in offers %}
-    <a
-      href="/stake/{{ offer.id }}"
-      class="block bg-black border border-white/10 rounded-2xl p-6 space-y-5 transition hover:border-emerald-400 hover:glow cursor-pointer"
+    <div
+      onclick="window.location.href='/stake/{{ offer.id }}'"
+      class="group relative block bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 transition-all duration-500 hover:border-emerald-500/30 hover:shadow-[0_20px_50px_rgba(0,0,0,0.5),0_0_20px_rgba(16,185,129,0.05)] cursor-pointer overflow-hidden"
     >
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-4">
-          <img
-            src="{{ offer.player_avatar }}"
-            alt="Avatar {{ offer.player_name }}"
-            class="w-12 h-12 rounded-full border border-emerald-400/40"
-          />
-          <div>
-            <p class="font-semibold">{{ offer.player_name }}</p>
+      <!-- Decorative background glow -->
+      <div class="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/5 blur-[80px] group-hover:bg-emerald-500/10 transition-colors duration-500"></div>
+      
+      <div class="relative space-y-5">
+        <!-- Card Header: Player & Status -->
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="relative w-10 h-10 flex-shrink-0 bg-white/5 rounded-xl border border-white/10 overflow-hidden flex items-center justify-center group-hover:border-emerald-500/50 transition-colors duration-500">
+              <img
+                src="{{ offer.player_avatar }}"
+                onerror="this.src='/static/img/avatar-fallback.svg'; this.onerror=null; this.classList.add('p-1.5');"
+                alt="Avatar {{ offer.player_name }}"
+                class="w-full h-full object-cover"
+              />
+              <div class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0a0a0a] rounded-full z-10"></div>
+            </div>
+            <div>
+              <p class="font-title text-base leading-tight">{{ offer.player_name }}</p>
+              <p class="text-[9px] text-gray-500 uppercase tracking-widest font-bold">Jogador Profissional</p>
+            </div>
+          </div>
+          <span class="text-[9px] px-2.5 py-0.5 rounded-full border border-white/10 bg-white/5 uppercase tracking-widest font-black {{ offer.status_class }}">
+            {{ offer.status_label }}
+          </span>
+        </div>
+
+        <!-- Tournament Title -->
+        <h3 class="text-lg font-title leading-tight group-hover:text-emerald-400 transition-colors duration-300 line-clamp-1">
+          {{ offer.tournament_name }}
+        </h3>
+
+        <!-- Multi-Stats Row -->
+        <div class="flex items-center justify-between py-3 border-y border-white/5">
+          <div class="flex flex-col gap-0.5">
+            <span class="text-[9px] text-gray-500 uppercase font-black tracking-tighter">Buy-in</span>
+            <span class="font-mono text-xs text-white">US$ {{ "%.2f"|format(offer.buyin) }}</span>
+          </div>
+          <div class="flex flex-col gap-0.5 items-center">
+            <span class="text-[9px] text-gray-500 uppercase font-black tracking-tighter">Início</span>
+            <div class="flex flex-col items-center leading-none">
+              <span class="font-mono text-xs text-white">{{ offer.start_time.strftime("%d/%m") if offer.start_time else "A def." }}</span>
+              <span class="text-[10px] text-gray-500 font-mono mt-0.5">{{ offer.start_time.strftime("%H:%M") if offer.start_time else "" }}</span>
+            </div>
+          </div>
+          <div class="flex flex-col gap-0.5 items-end">
+            <span class="text-[9px] text-emerald-400/70 uppercase font-black tracking-tighter">Markup</span>
+            <span class="font-mono text-xs text-emerald-400 font-bold">{{ offer.markup }}x</span>
           </div>
         </div>
-        <div class="flex items-center gap-2">
-          {% if offer.is_closed %}
-          <span class="text-xs px-2 py-1 rounded-full border border-red-500/50 text-red-400">Encerrada</span>
-          {% endif %}
-          <span class="text-xs text-emerald-400 font-mono">Markup {{ offer.markup }}</span>
-        </div>
-      </div>
 
-      <div class="space-y-2">
-        <h3 class="text-lg font-semibold">{{ offer.tournament_name }}</h3>
-        <p class="text-sm text-gray-400">
-          Buy-in
-          <span class="font-mono text-white">US$ {{ "%.2f"|format(offer.buyin) }}</span>
-          · Início
-          <span class="font-mono text-white">
-            {{ offer.start_time.strftime("%H:%M") if offer.start_time else "A definir" }}
+        <!-- Progress Section -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between text-[10px]">
+            <span class="text-gray-500 font-black uppercase tracking-widest">Progresso de Apoios</span>
+            <span class="font-mono text-emerald-400 font-black">{{ "%.2f"|format(offer.progress_sale_pct) }}%</span>
+          </div>
+          <div class="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div
+              class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 transition-all duration-1000 ease-out"
+              style="width: {{ offer.progress_sale_pct }}%;"
+            ></div>
+          </div>
+        </div>
+
+        <!-- Footer: Available & CTA -->
+        <div class="pt-2 flex items-center justify-between">
+          <div class="flex flex-col">
+            <span class="text-[9px] text-gray-500 uppercase font-black tracking-widest">Cota Disponível</span>
+            <div class="flex items-baseline gap-1.5">
+              <span class="font-title text-xl text-white">{{ offer.total_pct - offer.sold_pct }}%</span>
+              {% set avail_pct = (offer.total_pct - offer.sold_pct) %}
+              {% set avail_usd = (offer.buyin * offer.markup * avail_pct / 100) %}
+              <span class="text-[10px] text-emerald-400/70 font-mono">≈ US$ {{ "%.2f"|format(avail_usd) }}</span>
+            </div>
+          </div>
+          
+          {% if offer.can_support %}
+          <div class="relative group/btn">
+            <div class="absolute -inset-2 bg-emerald-500/10 rounded-full blur opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
+            <span class="relative flex items-center gap-1.5 px-5 py-2.5 rounded-full bg-emerald-400 text-black font-black text-[10px] uppercase shadow-xl shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all">
+              Apoiar
+              <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+            </span>
+          </div>
+          {% else %}
+          <span class="px-4 py-2 rounded-full border border-white/5 text-gray-500 text-[10px] font-black uppercase hover:bg-white/5 transition-colors">
+            Detalhes
           </span>
-        </p>
-      </div>
-
-      <div class="space-y-2">
-        <div class="flex items-center justify-between text-xs text-gray-400">
-          <span>Vendido (sobre meta)</span>
-          <span class="font-mono text-emerald-400">{{ "%.2f"|format(offer.progress_sale_pct) }}%</span>
+          {% endif %}
         </div>
-        <div class="w-full h-2 bg-white/10 rounded-full">
-          <div
-            class="h-2 rounded-full bg-emerald-400"
-            style="width: {{ offer.progress_sale_pct }}%;"
-          ></div>
-        </div>
-        <p class="text-xs text-gray-500 font-mono">
-          US$ {{ "%.2f"|format(offer.sold_buyin_amount) }} / US$ {{ "%.2f"|format(offer.target_buyin_amount) }}
-        </p>
       </div>
-
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-xs text-gray-400">Disponível</p>
-          <p class="font-mono text-sm text-white">
-            {{ offer.total_pct - offer.sold_pct }}% de {{ offer.total_pct }}%
-          </p>
-          {% set avail_pct = (offer.total_pct - offer.sold_pct) %}
-          {% set avail_usd = (offer.buyin * offer.markup * avail_pct / 100) %}
-          <p class="text-xs text-gray-500 font-mono">≈ US$ {{ "%.2f"|format(avail_usd) }}</p>
-        </div>
-        {% if offer.can_support %}
-        <span class="px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 transition">
-          Apoiar
-        </span>
-        {% else %}
-        <span class="px-4 py-2 rounded-full border border-white/20 text-gray-300 transition">
-          Ver detalhes
-        </span>
-        {% endif %}
-      </div>
-    </a>
+    </div>
     {% endfor %}
   </div>
 </section>

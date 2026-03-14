@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, or_, select, func
 from sqlalchemy.orm import Session, joinedload
 from urllib.parse import quote_plus
 
@@ -79,7 +79,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     active_tournaments_stmt = (
         select(Tournament)
         .where(Tournament.status.in_(("Aberto", "Jogando")))
-        .options(joinedload(Tournament.offers))
+        .options(joinedload(Tournament.offers).joinedload(StakeOffer.player))
         .order_by(Tournament.data_hora.asc().nulls_last(), Tournament.id.desc())
     )
     active_tournaments = db.execute(active_tournaments_stmt).unique().scalars().all()
@@ -105,9 +105,14 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
                 continue
             supporters_by_tournament.setdefault(inv.offer.tournament_id, []).append(
                 {
+                    "id": inv.id,
+                    "offer_id": inv.offer_id,
                     "name": inv.backer.nome if inv.backer else f"Usuário #{inv.backer_id}",
                     "pct": Decimal(str(inv.pct_comprada or 0)),
                     "amount": Decimal(str(inv.valor_investido or 0)),
+                    "markup": float(inv.offer.markup) if inv.offer else 1.0,
+                    "total_disponivel_pct": float(inv.offer.total_disponivel_pct) if inv.offer else 100,
+                    "vendido_pct": float(inv.offer.vendido_pct) if inv.offer else 0,
                 }
             )
 
@@ -186,6 +191,187 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     pix_masked_by_wr = {wr.id: _mask_pix_display(wr.pix_key) for wr in withdrawal_requests}
 
     user_profile_photo_url = getattr(user, "profile_photo_url", None) if user else None
+
+    # --- Lógica migrada da aba Resultados ---
+    pending_stmt = (
+        select(MatchResult)
+        .where(MatchResult.review_status.in_(["PENDING", "UNDER_REVIEW"]))
+        .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
+        .order_by(MatchResult.submitted_at.asc(), MatchResult.id.asc())
+    )
+    pending_results_db = db.execute(pending_stmt).scalars().all()
+
+    reviewed_stmt = (
+        select(MatchResult)
+        .where(MatchResult.review_status.in_(("APPROVED", "REJECTED")))
+        .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
+        .order_by(MatchResult.reviewed_at.desc(), MatchResult.id.desc())
+        .limit(40)
+    )
+    reviewed_results_db = db.execute(reviewed_stmt).scalars().all()
+
+    distribution_stmt = (
+        select(PrizeDistribution)
+        .where(PrizeDistribution.match_result_id.in_([item.id for item in reviewed_results_db] or [-1]))
+    )
+    distributions = db.execute(distribution_stmt).scalars().all()
+    distribution_by_result_db: dict[int, list[PrizeDistribution]] = {}
+    for item in distributions:
+        distribution_by_result_db.setdefault(item.match_result_id, []).append(item)
+
+    result_ids_by_tournament_player: dict[tuple[int, int], int] = {}
+    for r in pending_results_db + reviewed_results_db:
+        result_ids_by_tournament_player[(r.tournament_id, r.player_id)] = r.id
+
+    supporters_by_result_db: dict[int, list[dict]] = {}
+    if result_ids_by_tournament_player:
+        offer_conditions = [
+            and_(StakeOffer.tournament_id == t, StakeOffer.player_id == p)
+            for (t, p) in result_ids_by_tournament_player.keys()
+        ]
+        offer_stmt = select(StakeOffer).where(or_(*offer_conditions)).options(joinedload(StakeOffer.tournament))
+        offer_rows = db.execute(offer_stmt).scalars().all()
+        offer_id_to_result_id: dict[int, int] = {}
+        for offer in offer_rows:
+            if offer.tournament_id is not None and offer.player_id is not None:
+                key = (offer.tournament_id, offer.player_id)
+                if key in result_ids_by_tournament_player:
+                    offer_id_to_result_id[offer.id] = result_ids_by_tournament_player[key]
+        offer_ids = list(offer_id_to_result_id.keys())
+        if offer_ids:
+            inv_stmt = (
+                select(Investment)
+                .where(Investment.offer_id.in_(offer_ids))
+                .options(joinedload(Investment.backer), joinedload(Investment.offer))
+            )
+            for inv in db.execute(inv_stmt).scalars().all():
+                result_id = offer_id_to_result_id.get(inv.offer_id) if inv.offer_id else None
+                if result_id is not None:
+                    supporters_by_result_db.setdefault(result_id, []).append(
+                        {
+                            "name": inv.backer.nome if inv.backer else f"Usuário #{inv.backer_id}",
+                            "amount": inv.valor_investido,
+                            "pct": inv.pct_comprada,
+                        }
+                    )
+
+    # Prévia da divisão para resultados em revisão
+    preview_by_result_db: dict[int, list[dict]] = {}
+    for pending in pending_results_db:
+        supporters = supporters_by_result_db.get(pending.id, [])
+        if not supporters:
+            continue
+        try:
+            total_sent = q_money(Decimal(str(pending.valor_enviado)))
+        except (InvalidOperation, TypeError):
+            continue
+        if total_sent <= 0:
+            continue
+
+        items: list[dict] = []
+        backer_gross_total = Decimal("0")
+        fee_total = Decimal("0")
+
+        for s in supporters:
+            try:
+                pct = Decimal(str(s.get("pct") or 0))
+                invested_amount = q_money(Decimal(str(s.get("amount") or 0)))
+            except InvalidOperation:
+                continue
+            gross_amount = q_money(total_sent * pct / Decimal("100"))
+            gain_amount = gross_amount - invested_amount
+            if gain_amount < 0:
+                gain_amount = Decimal("0")
+            platform_fee = q_money(gain_amount * FEE_RATE)
+            net_amount = gross_amount - platform_fee
+
+            backer_gross_total += gross_amount
+            fee_total += platform_fee
+
+            items.append(
+                {
+                    "role": "Apoiador",
+                    "name": s.get("name") or "-",
+                    "net_amount": net_amount,
+                    "platform_fee": platform_fee,
+                }
+            )
+
+        backer_gross_total = q_money(backer_gross_total)
+        fee_total = q_money(fee_total)
+        player_amount = q_money(total_sent - backer_gross_total)
+
+        items.append(
+            {
+                "role": "Jogador",
+                "name": pending.player.nome if pending.player else "Jogador",
+                "net_amount": player_amount,
+                "platform_fee": Decimal("0"),
+            }
+        )
+        if fee_total > 0:
+            items.append(
+                {
+                    "role": "Plataforma",
+                    "name": "SAFE STAKE",
+                    "net_amount": fee_total,
+                    "platform_fee": fee_total,
+                }
+            )
+        preview_by_result_db[pending.id] = items
+    # --- Fim Lógica migrada da aba Resultados ---
+
+    # --- Lucros da Plataforma ---
+    total_platform_fee = db.execute(
+        select(func.sum(PrizeDistribution.platform_fee))
+        .where(PrizeDistribution.platform_fee > 0)
+    ).scalar() or Decimal("0")
+
+    recent_platform_fees = db.execute(
+        select(PrizeDistribution)
+        .options(joinedload(PrizeDistribution.match_result).joinedload(MatchResult.tournament))
+        .where(PrizeDistribution.platform_fee > 0)
+        .order_by(PrizeDistribution.created_at.desc())
+        .limit(50)
+    ).scalars().all()
+    # --- Fim Lucros da Plataforma ---
+
+    pending_results_data = {}
+    for r in pending_results_db:
+        r_supporters = [
+            {
+                "name": s["name"],
+                "pct": f"{s['pct']:.2f}",
+                "amount": f"{s['amount']:.2f}"
+            }
+            for s in supporters_by_result_db.get(r.id, [])
+        ]
+        r_preview = [
+            {
+                "role": item["role"],
+                "name": item["name"],
+                "net_amount": f"{item['net_amount']:.2f}",
+                "platform_fee": str(item.get("platform_fee", "0"))
+            }
+            for item in preview_by_result_db.get(r.id, [])
+        ]
+        pending_results_data[str(r.id)] = {
+            "id": r.id,
+            "tournament_id": r.tournament.id,
+            "tournament_name": r.tournament.nome,
+            "plataforma": r.tournament.plataforma or "Sala",
+            "buyin": f"{r.tournament.buyin:.2f}",
+            "player_name": r.player.nome,
+            "posicao_final": r.posicao_final,
+            "submitted_at": r.submitted_at.strftime("%d/%m/%Y %H:%M") if r.submitted_at else "-",
+            "valor_premio": f"{r.valor_premio:.2f}",
+            "valor_enviado": f"{r.valor_enviado:.2f}",
+            "print_url": r.print_url or "#",
+            "comprovante_url": r.comprovante_url or "#",
+            "supporters": r_supporters,
+            "preview": r_preview
+        }
+
     response = templates.TemplateResponse(
         "admin_dashboard.html",
         {
@@ -210,6 +396,14 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             "finalized_tournament_ids": [t.id for t in finalized_tournaments],
             "requires_auth": True,
             "tournament_created": request.query_params.get("created") == "1",
+            "pending_results": pending_results_db,
+            "reviewed_results": reviewed_results_db,
+            "distribution_by_result": distribution_by_result_db,
+            "supporters_by_result": supporters_by_result_db,
+            "preview_by_result": preview_by_result_db,
+            "pending_results_data": pending_results_data,
+            "total_platform_fee": total_platform_fee,
+            "recent_platform_fees": recent_platform_fees,
         },
     )
     # Evita cache antigo: cliente sempre recebe HTML atual (evita bug de Enter/Publicar enviando form errado)
@@ -258,7 +452,8 @@ def approve_withdrawal(
         n_type="WITHDRAWAL_APPROVED",
         title="Saque aprovado",
         message=f"Sua solicitação de saque de US$ {amount:.2f} foi aprovada.",
-        action_url="/dashboard",
+        action_url="/player/offers?tab=historico",
+        target_role="jogador",
     )
     db.commit()
 
@@ -299,7 +494,8 @@ def reject_withdrawal(
             "Sua solicitação de saque foi rejeitada."
             + (f" Motivo: {wr.admin_note}" if wr.admin_note else "")
         ),
-        action_url="/dashboard",
+        action_url="/player/offers?tab=historico",
+        target_role="jogador",
     )
     db.commit()
 
@@ -378,89 +574,6 @@ def update_admin_password(
     return RedirectResponse(url="/admin/dashboard?pwd_success=1", status_code=303)
 
 
-@router.post("/admin/tournaments/create")
-def create_admin_tournament_offer(
-    request: Request,
-    tournament_name: str = Form(...),
-    room: str = Form(...),
-    buyin: float = Form(...),
-    markup: float = Form(...),
-    total_pct: float = Form(...),
-    start_time: str = Form(""),
-    db: Session = Depends(get_db),
-):
-    user = fetch_current_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    ensure_admin_user(user)
-
-    normalized_room = normalize_supported_room(room.strip()) if room else None
-    if not normalized_room:
-        raise HTTPException(
-            status_code=400,
-            detail="Sala/plataforma obrigatória e deve ser uma das suportadas (ex.: GGPoker, PokerStars, 888poker).",
-        )
-
-    try:
-        buyin_value = q_money(Decimal(str(buyin)))
-        markup_value = Decimal(str(markup))
-        total_pct_value = Decimal(str(total_pct))
-    except InvalidOperation:
-        raise HTTPException(status_code=400, detail="Dados inválidos para criar torneio. Revise os campos.")
-
-    if buyin_value <= 0:
-        raise HTTPException(status_code=400, detail="Buy-in deve ser maior que zero.")
-    if markup_value <= 0:
-        raise HTTPException(status_code=400, detail="Markup deve ser maior que zero.")
-    if total_pct_value <= 0 or total_pct_value > 100:
-        raise HTTPException(status_code=400, detail="Porcentagem à venda deve ser entre 0 e 100.")
-
-    data_hora = None
-    if start_time:
-        try:
-            local_dt = datetime.fromisoformat(start_time)
-            if local_dt.tzinfo is None:
-                local_dt = local_dt.replace(tzinfo=LOCAL_TZ)
-            data_hora = local_dt.replace(tzinfo=None)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Data/hora inválida. Use uma data no formato correto.")
-
-    tournament = Tournament(
-        nome=tournament_name.strip(),
-        sharkscope_id=normalized_room,
-        plataforma=normalized_room,
-        buyin=buyin_value,
-        data_hora=data_hora,
-        status="Aberto",
-    )
-    db.add(tournament)
-    db.flush()
-
-    offer = StakeOffer(
-        tournament_id=tournament.id,
-        player_id=user.id,
-        markup=markup_value,
-        total_disponivel_pct=total_pct_value,
-        vendido_pct=Decimal("0"),
-        escrow_status="COLLECTING",
-    )
-    db.add(offer)
-    db.flush()
-
-    total_required = ((buyin_value * markup_value) * total_pct_value) / Decimal("100")
-    db.add(
-        TournamentEscrow(
-            tournament_id=tournament.id,
-            offer_id=offer.id,
-            total_required=q_money(total_required),
-            total_collected=Decimal("0"),
-            status="COLLECTING",
-            deadline_at=data_hora,
-        )
-    )
-    db.commit()
-
-    return RedirectResponse(url="/admin/dashboard?tab=torneios&created=1", status_code=303)
 
 
 @router.post("/api/tournaments/{tournament_id}/close")
@@ -513,7 +626,7 @@ async def close_tournament(tournament_id: int, request: Request, db: Session = D
         pct = Decimal(str(inv.pct_comprada or 0))
         valor_receber = q_money(prize_amount * pct / Decimal("100"))
         inv.lucro_recebido = valor_receber
-        inv.payout_status = "PENDING"
+        inv.payout_status = "PAID"
         total_allocated += valor_receber
         updated_count += 1
 
@@ -630,158 +743,6 @@ def reject_kyc(
     return RedirectResponse(url="/admin/dashboard", status_code=303)
 
 
-@router.get("/admin/results", response_class=HTMLResponse)
-def admin_results(request: Request, db: Session = Depends(get_db)):
-    user = fetch_current_user(request, db)
-    if not user:
-        return RedirectResponse(url="/login", status_code=303)
-    ensure_admin_user(user)
-
-    pending_stmt = (
-        select(MatchResult)
-        .where(MatchResult.review_status == "UNDER_REVIEW")
-        .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
-        .order_by(MatchResult.submitted_at.asc(), MatchResult.id.asc())
-    )
-    pending_results = db.execute(pending_stmt).scalars().all()
-
-    reviewed_stmt = (
-        select(MatchResult)
-        .where(MatchResult.review_status.in_(("APPROVED", "REJECTED")))
-        .options(joinedload(MatchResult.player), joinedload(MatchResult.tournament))
-        .order_by(MatchResult.reviewed_at.desc(), MatchResult.id.desc())
-        .limit(40)
-    )
-    reviewed_results = db.execute(reviewed_stmt).scalars().all()
-
-    distribution_stmt = (
-        select(PrizeDistribution)
-        .where(PrizeDistribution.match_result_id.in_([item.id for item in reviewed_results] or [-1]))
-    )
-    distributions = db.execute(distribution_stmt).scalars().all()
-    distribution_by_result: dict[int, list[PrizeDistribution]] = {}
-    for item in distributions:
-        distribution_by_result.setdefault(item.match_result_id, []).append(item)
-
-    result_ids_by_tournament_player: dict[tuple[int, int], int] = {}
-    for r in pending_results + reviewed_results:
-        result_ids_by_tournament_player[(r.tournament_id, r.player_id)] = r.id
-
-    supporters_by_result: dict[int, list[dict]] = {}
-    if result_ids_by_tournament_player:
-        offer_conditions = [
-            and_(StakeOffer.tournament_id == t, StakeOffer.player_id == p)
-            for (t, p) in result_ids_by_tournament_player.keys()
-        ]
-        offer_stmt = select(StakeOffer).where(or_(*offer_conditions)).options(joinedload(StakeOffer.tournament))
-        offer_rows = db.execute(offer_stmt).scalars().all()
-        offer_id_to_result_id: dict[int, int] = {}
-        for offer in offer_rows:
-            if offer.tournament_id is not None and offer.player_id is not None:
-                key = (offer.tournament_id, offer.player_id)
-                if key in result_ids_by_tournament_player:
-                    offer_id_to_result_id[offer.id] = result_ids_by_tournament_player[key]
-        offer_ids = list(offer_id_to_result_id.keys())
-        if offer_ids:
-            inv_stmt = (
-                select(Investment)
-                .where(Investment.offer_id.in_(offer_ids))
-                .options(joinedload(Investment.backer), joinedload(Investment.offer))
-            )
-            for inv in db.execute(inv_stmt).scalars().all():
-                result_id = offer_id_to_result_id.get(inv.offer_id) if inv.offer_id else None
-                if result_id is not None:
-                    supporters_by_result.setdefault(result_id, []).append(
-                        {
-                            "name": inv.backer.nome if inv.backer else f"Usuário #{inv.backer_id}",
-                            "amount": inv.valor_investido,
-                            "pct": inv.pct_comprada,
-                        }
-                    )
-
-    # Prévia da divisão para resultados em revisão (antes de aprovar)
-    preview_by_result: dict[int, list[dict]] = {}
-    for pending in pending_results:
-        supporters = supporters_by_result.get(pending.id, [])
-        if not supporters:
-            continue
-        try:
-            total_sent = q_money(Decimal(str(pending.valor_enviado)))
-        except (InvalidOperation, TypeError):
-            continue
-        if total_sent <= 0:
-            continue
-
-        items: list[dict] = []
-        backer_gross_total = Decimal("0")
-        fee_total = Decimal("0")
-
-        for s in supporters:
-            try:
-                pct = Decimal(str(s.get("pct") or 0))
-                invested_amount = q_money(Decimal(str(s.get("amount") or 0)))
-            except InvalidOperation:
-                continue
-            gross_amount = q_money(total_sent * pct / Decimal("100"))
-            gain_amount = gross_amount - invested_amount
-            if gain_amount < 0:
-                gain_amount = Decimal("0")
-            platform_fee = q_money(gain_amount * FEE_RATE)
-            net_amount = gross_amount - platform_fee
-
-            backer_gross_total += gross_amount
-            fee_total += platform_fee
-
-            items.append(
-                {
-                    "role": "Apoiador",
-                    "name": s.get("name") or "-",
-                    "net_amount": net_amount,
-                    "platform_fee": platform_fee,
-                }
-            )
-
-        backer_gross_total = q_money(backer_gross_total)
-        fee_total = q_money(fee_total)
-        player_amount = q_money(total_sent - backer_gross_total)
-
-        items.append(
-            {
-                "role": "Jogador",
-                "name": pending.player.nome if pending.player else "Jogador",
-                "net_amount": player_amount,
-                "platform_fee": Decimal("0"),
-            }
-        )
-        if fee_total > 0:
-            items.append(
-                {
-                    "role": "Plataforma",
-                    "name": "SAFE STAKE",
-                    "net_amount": fee_total,
-                    "platform_fee": fee_total,
-                }
-            )
-        preview_by_result[pending.id] = items
-
-    embed = request.query_params.get("embed") == "1"
-    return templates.TemplateResponse(
-        "admin_result_review.html",
-        {
-            "request": request,
-            "user": user,
-            "wallet": get_wallet_summary(user),
-            "pending_results": pending_results,
-            "reviewed_results": reviewed_results,
-            "distribution_by_result": distribution_by_result,
-            "supporters_by_result": supporters_by_result,
-            "preview_by_result": preview_by_result,
-            "requires_auth": True,
-            "embed": embed,
-        },
-    )
-
-
 @router.post("/admin/results/{result_id}/update-values")
 def update_result_values(
     result_id: int,
@@ -801,8 +762,8 @@ def update_result_values(
     ).scalars().first()
     if not result:
         raise HTTPException(status_code=404, detail="Resultado não encontrado.")
-    if result.review_status != "UNDER_REVIEW":
-        raise HTTPException(status_code=400, detail="Só é possível editar valores enquanto o resultado estiver em revisão.")
+    if result.review_status not in ("UNDER_REVIEW", "PENDING"):
+        raise HTTPException(status_code=400, detail="Só é possível editar valores enquanto o resultado estiver pendente ou em revisão.")
 
     premio = q_money(Decimal(str(valor_premio)))
     enviado = q_money(Decimal(str(valor_enviado)))
@@ -812,9 +773,7 @@ def update_result_values(
     result.valor_premio = premio
     result.valor_enviado = enviado
     db.commit()
-    url = "/admin/results?updated=1"
-    if embed == "1":
-        url += "&embed=1"
+    url = "/admin/dashboard?updated=1"
     return RedirectResponse(url=url, status_code=303)
 
 
@@ -840,7 +799,7 @@ def approve_result(
         result = db.execute(result_stmt).scalars().first()
         if not result:
             raise HTTPException(status_code=404, detail="Resultado não encontrado.")
-        if result.review_status != "UNDER_REVIEW":
+        if result.review_status not in ("UNDER_REVIEW", "PENDING"):
             raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
 
         total_sent = q_money(Decimal(str(result.valor_enviado)))
@@ -870,6 +829,12 @@ def approve_result(
             net_amount = gross_amount - platform_fee
 
             inv.lucro_recebido = q_money(net_amount - invested_amount)
+            inv.payout_status = "PAID"
+
+            backer_wallet = get_wallet_for_update(db, inv.backer_id)
+            backer_em_jogo = Decimal(str(backer_wallet.saldo_em_jogo or 0))
+            backer_wallet.saldo_em_jogo = q_money(max(Decimal("0"), backer_em_jogo - invested_amount))
+            backer_wallet.saldo_disponivel = q_money(Decimal(str(backer_wallet.saldo_disponivel or 0)) + net_amount)
 
             db.add(
                 PrizeDistribution(
@@ -938,12 +903,13 @@ def approve_result(
             db,
             user_id=result.player_id,
             n_type="RESULT_APPROVED",
-            title="Resultado aprovado",
+            title="Resultado aprovado ✓",
             message=(
                 f"Seu resultado do torneio #{result.tournament_id} foi aprovado. "
                 f"Distribuição financeira concluída."
             ),
-            action_url="/dashboard",
+            action_url="/player/offers?tab=torneios",
+            target_role="jogador",
         )
 
     db.commit()
@@ -968,7 +934,7 @@ def reject_result(
     stmt = select(MatchResult).where(MatchResult.id == result_id)
     result = db.execute(stmt).scalars().first()
     if result:
-        if result.review_status != "UNDER_REVIEW":
+        if result.review_status not in ("UNDER_REVIEW", "PENDING"):
             raise HTTPException(status_code=400, detail="Este resultado já foi revisado anteriormente.")
         result.review_status = "REJECTED"
         result.admin_verified = False
@@ -979,17 +945,16 @@ def reject_result(
             db,
             user_id=result.player_id,
             n_type="RESULT_REJECTED",
-            title="Resultado rejeitado",
+            title="Resultado rejeitado ✗",
             message=(
                 f"Seu resultado do torneio #{result.tournament_id} foi rejeitado."
                 + (f" Motivo: {result.rejection_reason}" if result.rejection_reason else "")
             ),
-            action_url="/player/results/new",
+            action_url=f"/player/results/new?tournament_id={result.tournament_id}",
+            target_role="jogador",
         )
         db.commit()
-    url = "/admin/results"
-    if embed == "1":
-        url += "?embed=1"
+    url = "/admin/dashboard"
     return RedirectResponse(url=url, status_code=303)
 
 
@@ -1041,3 +1006,83 @@ def update_call_status(
     schedule.reviewed_at = datetime.now(timezone.utc)
     db.commit()
     return RedirectResponse(url="/admin/calls", status_code=303)
+@router.post("/admin/invest/update")
+async def admin_update_investment(request: Request, db: Session = Depends(get_db)):
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login.")
+    ensure_admin_user(user)
+
+    data = await request.json()
+    investment_id = data.get("investment_id")
+    new_amount = Decimal(str(data.get("amount") or 0))
+
+    if not investment_id:
+        raise HTTPException(status_code=400, detail="ID de investimento não informado.")
+    if new_amount <= 0:
+        raise HTTPException(status_code=400, detail="O valor deve ser maior que zero.")
+
+    inv_stmt = (
+        select(Investment)
+        .where(Investment.id == investment_id)
+        .options(joinedload(Investment.offer).joinedload(StakeOffer.tournament))
+        .with_for_update(of=Investment)
+    )
+    investment = db.execute(inv_stmt).scalars().first()
+    if not investment:
+        raise HTTPException(status_code=404, detail="Apoio não encontrado.")
+
+    offer = investment.offer
+    tournament = offer.tournament
+    
+    # Recalcula percentual
+    buyin = Decimal(str(tournament.buyin))
+    markup = Decimal(str(offer.markup))
+    if buyin <= 0 or markup <= 0:
+        raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
+
+    new_share_pct = q_money((new_amount / (buyin * markup)) * Decimal("100"))
+    
+    # Verifica disponibilidade
+    sum_sold = db.execute(
+        select(func.coalesce(func.sum(Investment.pct_comprada), 0))
+        .where(Investment.offer_id == offer.id, Investment.id != investment.id)
+    ).scalar_one()
+    others_sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    total_pct = Decimal(str(offer.total_disponivel_pct))
+    
+    if others_sold_pct + new_share_pct > total_pct + Decimal("0.001"):
+        avail_pct = max(Decimal("0"), total_pct - others_sold_pct)
+        # Calcula quanto em dólar isso representa
+        max_usd = q_money((avail_pct / Decimal("100")) * (buyin * markup))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Não há cota suficiente. Máximo permitido: US$ {float(max_usd):.2f} ({float(avail_pct):.1f}%).",
+        )
+
+    # Ajuste de carteira do BACKER (não do admin)
+    diff = q_money(new_amount - investment.valor_investido)
+    backer_wallet = get_wallet_for_update(db, investment.backer_id)
+    
+    if diff > 0 and backer_wallet.saldo_disponivel < diff:
+        raise HTTPException(status_code=400, detail="Saldo do apoiador insuficiente.")
+
+    backer_wallet.saldo_disponivel -= diff
+    backer_wallet.saldo_em_jogo += diff
+    
+    investment.valor_investido = new_amount
+    investment.pct_comprada = new_share_pct
+
+    # Sincroniza vendido_pct na oferta
+    total_sold_pct = db.execute(
+        select(func.coalesce(func.sum(Investment.pct_comprada), 0))
+        .where(Investment.offer_id == offer.id)
+    ).scalar_one()
+    offer.vendido_pct = q_money(Decimal(str(total_sold_pct or 0)))
+    
+    # Sincroniza meta atingida
+    from routers.escrow import sync_offer_escrow
+    sync_offer_escrow(db, offer)
+
+    db.commit()
+    return {"success": True}

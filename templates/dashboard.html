@@ -21,12 +21,7 @@
   {% endif %}
   <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
     <div class="space-y-2">
-      <img
-        src="/static/img/safestake-01.svg"
-        alt="SAFE STAKE"
-        class="h-6"
-      />
-      <h1 class="font-title text-3xl uppercase">Dashboard do Apoiador</h1>
+      <h1 class="font-title text-3xl uppercase">Olá, bem vindo {{ user.nome }}!</h1>
       <p class="text-gray-300">Controle seus aportes e acompanhe o histórico de retornos.</p>
     </div>
     <div class="flex items-center gap-2">
@@ -74,18 +69,33 @@
 
   {% if user.tipo == "apoiador" %}
   <nav class="flex gap-2 border-b border-white/10 pb-2" aria-label="Abas do painel">
-    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition bg-emerald-400/20 text-emerald-400 border border-b-0 border-emerald-400/50" data-tab="inicio">Início</button>
-    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="historico">Histórico de Stakes</button>
-    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="saques">Histórico de Saques</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition bg-emerald-400/20 text-emerald-400 border border-b-0 border-emerald-400/50" data-tab="historico">Seus Apoios</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="inicio">Depósitos</button>
+    <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="saques">Saques</button>
     <button type="button" class="dashboard-tab px-4 py-2 rounded-t-lg font-medium transition text-gray-400 hover:text-white border border-transparent" data-tab="propostas">Minhas Propostas</button>
   </nav>
   {% endif %}
 
-  <div id="tab-inicio" class="dashboard-tab-panel space-y-8">
+  <div id="tab-inicio" class="dashboard-tab-panel hidden space-y-8">
   <div class="bg-black border border-white/10 rounded-2xl p-6">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="font-title text-xl uppercase">Depósitos (crédito em USD via PTAX)</h2>
+      <div class="flex items-center gap-2">
+        <h2 class="font-title text-xl uppercase">Seus Depósitos</h2>
+        <div class="group relative inline-block">
+          <div class="w-6 h-6 rounded-full border border-white/20 flex items-center justify-center text-gray-400 hover:border-emerald-400 hover:text-emerald-400 hover:bg-emerald-400/10 cursor-help transition-all">
+            <i data-lucide="help-circle" class="w-4 h-4"></i>
+          </div>
+          <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-64 p-3 bg-black/95 border border-white/10 rounded-xl text-xs text-gray-300 leading-relaxed invisible group-hover:visible opacity-0 group-hover:opacity-100 transition-all duration-200 z-50 shadow-2xl backdrop-blur-sm pointer-events-none">
+            Valores exibidos em dólar de acordo com a cotação do momento do seu depósito.
+            <div class="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-black/95"></div>
+          </div>
+        </div>
+      </div>
       <div class="flex items-center gap-3">
+        <div id="depositQuoteLoading" class="hidden items-center gap-2">
+          <span class="w-3 h-3 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></span>
+          <span class="text-[10px] text-emerald-400/70 uppercase font-medium tracking-wider">Calculando...</span>
+        </div>
         <button
           id="refreshBalanceBtn"
           type="button"
@@ -101,7 +111,7 @@
       <table class="w-full text-sm text-left text-gray-300">
         <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
           <tr>
-            <th class="py-3">Order NSU</th>
+            <th class="py-3">ID DEPÓSITO</th>
             <th class="py-3">Valor</th>
             <th class="py-3">Status</th>
             <th class="py-3">Data</th>
@@ -136,48 +146,6 @@
     </div>
   </div>
 
-  <div class="bg-black border border-white/10 rounded-2xl p-6">
-    <div class="flex items-center justify-between mb-4">
-      <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
-      <span class="text-xs text-gray-400">Últimas 10 solicitações</span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm text-left text-gray-300">
-        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
-          <tr>
-            <th class="py-3">Valor</th>
-            <th class="py-3">PIX</th>
-            <th class="py-3">Status</th>
-            <th class="py-3">Observação admin</th>
-            <th class="py-3">Data</th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-white/5">
-          {% for wr in withdrawal_requests %}
-          <tr>
-            <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
-            <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
-            <td class="py-3">
-              {% if wr.status == "PENDING" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
-              {% elif wr.status == "APPROVED" %}
-              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aprovado</span>
-              {% else %}
-              <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Rejeitado</span>
-              {% endif %}
-            </td>
-            <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
-            <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m %H:%M") if wr.created_at else "-" }}</td>
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="5" class="py-6 text-center text-gray-500">Nenhuma solicitação de saque registrada.</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
 
   {% if user.tipo == "jogador" %}
   <div class="bg-black border border-white/10 rounded-2xl p-6">
@@ -228,16 +196,16 @@
       </table>
     </div>
     {% else %}
-    <p class="text-gray-500 py-4">Nenhuma proposta pendente.</p>
+    <p class="text-gray-500 py-4">Nenhuma proposta registrada.</p>
     {% endif %}
   </div>
   {% endif %}
   </div>
 
-  <div id="tab-historico" class="dashboard-tab-panel space-y-8 {{ 'hidden' if user.tipo == 'apoiador' else '' }}">
+  <div id="tab-historico" class="dashboard-tab-panel space-y-8">
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4">
-        <h2 class="font-title text-xl uppercase">Histórico de Stakes</h2>
+        <h2 class="font-title text-xl uppercase">Seus Apoios</h2>
         <span class="text-xs text-gray-400">Últimas 10 operações</span>
       </div>
       <div class="overflow-x-auto">
@@ -250,6 +218,7 @@
               <th class="py-3">Cota</th>
               <th class="py-3">Resultado</th>
               <th class="py-3">Status</th>
+              <th class="py-3 text-right">Ação</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-white/5">
@@ -262,12 +231,40 @@
               <td class="py-3 font-mono {% if stake.status == 'Cancelado' %}text-gray-500{% else %}text-emerald-400{% endif %}">US$ {{ "%.2f"|format(stake.resultado) }}</td>
               <td class="py-3">
                 <span
-                  class="px-3 py-1 rounded-full text-xs border border-white/10
-                  {% if stake.status == 'Jogando' %}text-emerald-400{% elif stake.status == 'Cancelado' %}text-red-400{% else %}text-gray-300{% endif %}"
+                  class="px-3 py-1 rounded-full text-[10px] uppercase font-bold border {{ stake.status_class }}"
                 >
-                  {{ stake.status }}
+                  {{ stake.status_label }}
                 </span>
               </td>
+              <td class="py-3 text-right">
+                {% if stake.is_editable %}
+                <button
+                  type="button"
+                  class="edit-investment-btn-v2 flex-1 px-4 py-2 bg-emerald-400 text-black font-bold uppercase tracking-wider rounded-lg hover:bg-emerald-300 transition-all flex items-center justify-center gap-2 group-hover:scale-105 active:scale-95 shadow-lg shadow-emerald-400/20"
+                  data-inv-id="{{ stake.id }}"
+                  data-offer-id="{{ stake.offer_id }}"
+                  data-current-amount="{{ stake.valor|float }}"
+                  data-current-pct="{{ stake.pct|float }}"
+                  data-tournament="{{ stake.tournament }}"
+                  data-buyin="{{ stake.buyin|float }}"
+                  data-markup="{{ stake.markup|float }}"
+                  data-total-quota="{{ stake.total_disponivel_pct|float }}"
+                  data-total-sold="{{ stake.vendido_pct|float }}"
+                >
+                  <i data-lucide="edit-3" class="w-4 h-4"></i>
+                  <span>Editar Apoio</span>
+                </button>
+                {% else %}
+                <div class="flex items-center justify-end gap-2 text-gray-600 px-3 py-1.5" title="Não é mais possível editar este apoio">
+                  <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                  <span class="text-[9px] font-bold uppercase tracking-widest">Bloqueado</span>
+                </div>
+                {% endif %}
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7" class="py-6 text-center text-gray-500">Nenhum apoio registrado.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -278,6 +275,48 @@
 
   {% if user.tipo == "apoiador" %}
   <div id="tab-saques" class="dashboard-tab-panel hidden space-y-8">
+  <div class="bg-black border border-white/10 rounded-2xl p-6">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="font-title text-xl uppercase">Solicitações de saque</h2>
+      <span class="text-xs text-gray-400">Últimas 10 solicitações</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm text-left text-gray-300">
+        <thead class="text-xs uppercase text-gray-500 border-b border-white/10">
+          <tr>
+            <th class="py-3">Valor</th>
+            <th class="py-3">PIX</th>
+            <th class="py-3">Status</th>
+            <th class="py-3">Observação admin</th>
+            <th class="py-3">Data</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/5">
+          {% for wr in withdrawal_requests %}
+          <tr>
+            <td class="py-3 font-mono">US$ {{ "%.2f"|format(wr.amount) }}</td>
+            <td class="py-3 font-mono text-xs">{{ wr.pix_key }}</td>
+            <td class="py-3">
+              {% if wr.status == "PENDING" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-amber-400/50 text-amber-400">Pendente</span>
+              {% elif wr.status == "APPROVED" %}
+              <span class="px-3 py-1 rounded-full text-xs border border-emerald-400/50 text-emerald-400">Aprovado</span>
+              {% else %}
+              <span class="px-3 py-1 rounded-full text-xs border border-red-500/50 text-red-400">Rejeitado</span>
+              {% endif %}
+            </td>
+            <td class="py-3 text-gray-400">{{ wr.admin_note or "-" }}</td>
+            <td class="py-3 text-gray-400">{{ wr.created_at.strftime("%d/%m %H:%M") if wr.created_at else "-" }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="py-6 text-center text-gray-500">Nenhum saque registrado.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
     <div class="bg-black border border-white/10 rounded-2xl p-6">
       <div class="flex items-center justify-between mb-4">
         <h2 class="font-title text-xl uppercase">Histórico de Saques</h2>
@@ -313,7 +352,7 @@
             </tr>
             {% else %}
             <tr>
-              <td colspan="5" class="py-6 text-center text-gray-500">Nenhuma solicitação de saque registrada.</td>
+              <td colspan="5" class="py-6 text-center text-gray-500">Nenhum saque registrado.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -325,10 +364,10 @@
 
   {% if user.tipo == "apoiador" %}
   <div id="tab-propostas" class="dashboard-tab-panel hidden space-y-8">
-    <div class="bg-black border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center py-12 text-center">
-      <span class="text-4xl mb-3 opacity-80">🔒</span>
-      <h2 class="font-title text-xl uppercase text-gray-400 mb-2">Minhas Propostas</h2>
-      <p class="text-gray-500">Em breve.</p>
+    <div class="bg-black border border-white/10 rounded-2xl p-6 flex flex-col items-center justify-center py-16 text-center">
+      <i data-lucide="rocket" class="w-12 h-12 text-emerald-400 mb-4"></i>
+      <h2 class="font-title text-xl uppercase text-white mb-2">Minhas Propostas (Em breve)</h2>
+      <p class="text-gray-500 text-sm">Em breve mais uma nova função para seus apoios.</p>
     </div>
   </div>
   {% endif %}
@@ -343,7 +382,13 @@
     </div>
     <p class="text-sm text-gray-400">Digite o valor em USD. A cobrança será convertida para BRL pela PTAX.</p>
     <div class="space-y-2">
-      <label class="text-xs text-gray-400">Valor em USD (mínimo US$ 1,00)</label>
+      <div class="flex items-center justify-between">
+        <label class="text-xs text-gray-400">Valor em USD (mínimo US$ 1,00)</label>
+        <div id="depositModalQuoteLoading" class="hidden items-center gap-2">
+          <span class="w-3 h-3 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></span>
+          <span class="text-[10px] text-emerald-400/70 uppercase font-medium tracking-wider">Calculando...</span>
+        </div>
+      </div>
       <input
         id="depositAmount"
         type="number"
@@ -352,8 +397,8 @@
         placeholder="100.00"
         class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
       />
-      <p id="depositRateInfo" class="text-xs text-gray-500">Cotação PTAX: -</p>
-      <p id="depositConversionInfo" class="text-xs text-emerald-300">Conversão estimada: -</p>
+      <p id="depositRateInfo" class="text-[10px] text-gray-500 uppercase tracking-tight transition-opacity duration-300 opacity-0">Cotação PTAX: -</p>
+      <p id="depositConversionInfo" class="text-xs text-emerald-400 font-medium transition-opacity duration-300 opacity-0">Conversão estimada: -</p>
     </div>
 
     <button
@@ -374,10 +419,18 @@
       <h3 class="font-title text-lg uppercase text-emerald-400">Solicitar saque</h3>
       <button id="closeWithdrawalModal" type="button" class="text-gray-400 hover:text-white">✕</button>
     </div>
-    <form method="post" action="/player/withdrawals/request" class="space-y-3">
+    <form id="withdrawalForm" method="post" action="/player/withdrawals/request" class="space-y-3">
+      <input type="hidden" id="userAvailableBalance" value="{{ wallet.saldo_disponivel if wallet else 0 }}">
       <div class="space-y-2">
-        <label class="text-xs text-gray-400">Valor (US$)</label>
+        <div class="flex items-center justify-between">
+          <label class="text-xs text-gray-400">Valor (US$)</label>
+          <div id="withdrawQuoteLoading" class="hidden items-center gap-2">
+            <span class="w-3 h-3 border-2 border-emerald-400/20 border-t-emerald-400 rounded-full animate-spin"></span>
+            <span class="text-[10px] text-emerald-400/70 uppercase font-medium tracking-wider">Calculando...</span>
+          </div>
+        </div>
         <input
+          id="withdrawAmount"
           name="amount"
           type="number"
           min="0.01"
@@ -385,27 +438,13 @@
           required
           class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
         />
+        <p id="withdrawRateInfo" class="text-[10px] text-gray-500 uppercase tracking-tight transition-opacity duration-300 opacity-0">Cotação PTAX: -</p>
+        <p id="withdrawConversionInfo" class="text-xs text-emerald-400 font-medium transition-opacity duration-300 opacity-0">Conversão estimada: -</p>
       </div>
-      <div class="space-y-2">
-        <label class="text-xs text-gray-400">Tipo de chave PIX</label>
-        <select id="withdraw_pix_type" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400">
-          <option value="cpf">CPF</option>
-          <option value="email">E-mail</option>
-          <option value="telefone">Telefone</option>
-        </select>
-      </div>
-      <div class="space-y-2">
-        <label class="text-xs text-gray-400">Chave PIX de destino</label>
-        <input
-          type="text"
-          id="withdraw_pix_key"
-          name="pix_key"
-          value="{{ user.pix_key or '' }}"
-          placeholder="CPF, e-mail ou celular"
-          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-          required
-          autocomplete="off"
-        />
+      <div class="bg-emerald-400/10 border border-emerald-400/20 rounded-xl p-4 space-y-2">
+        <p class="text-xs text-gray-400 uppercase font-medium">PIX para recebimento</p>
+        <p class="text-white font-mono break-all">{{ user.pix_key or "Nenhuma chave cadastrada" }}</p>
+        <p class="text-[10px] text-emerald-400/70">O saque será enviado para sua chave cadastrada no perfil.</p>
       </div>
       <button
         type="submit"
@@ -414,6 +453,60 @@
         Enviar solicitação
       </button>
     </form>
+  </div>
+</div>
+
+<!-- Modal Editar Apoio -->
+<div id="editInvestmentModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" id="editInvestmentBackdrop"></div>
+  <div class="relative max-w-md mx-auto mt-24 bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in duration-300">
+    <div class="flex items-center justify-between">
+      <div class="space-y-1">
+        <h3 class="font-title text-lg uppercase text-emerald-400">Editar seu apoio</h3>
+        <p id="editInvTournamentName" class="text-[10px] text-gray-500 uppercase tracking-widest font-bold">-</p>
+      </div>
+      <button id="closeEditInvestmentModal" type="button" class="text-gray-400 hover:text-white transition-colors p-2">✕</button>
+    </div>
+    
+    <div class="p-4 bg-emerald-500/5 border border-emerald-500/10 rounded-xl space-y-2">
+      <div class="flex justify-between text-[10px] uppercase tracking-widest font-bold text-gray-500">
+        <span>Apoio atual</span>
+        <span id="currentAmountDisplay" class="text-white font-mono">-</span>
+      </div>
+      <p class="text-[10px] text-gray-500 leading-relaxed italic">
+        * Se você aumentar o valor, a diferença será descontada do saldo. Se diminuir, a diferença retornará para sua carteira.
+      </p>
+    </div>
+
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400 font-bold uppercase tracking-tighter">Novo valor (US$)</label>
+      <div class="relative">
+        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-mono font-bold text-sm">$</span>
+        <input
+          id="newInvestmentAmount"
+          type="number"
+          min="0.01"
+          step="0.01"
+          placeholder="0.00"
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl pl-7 pr-4 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all"
+        />
+        <div id="editPctDisplay" class="absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded-lg border border-emerald-400/20 pointer-events-none">
+          0.00%
+        </div>
+      </div>
+      <div id="editDiffDisplay" class="text-[10px] font-mono uppercase px-1 hidden py-1 border-t border-white/5 mt-2">
+        <!-- Injected via JS -->
+      </div>
+    </div>
+
+    <button
+      id="submitEditInvestment"
+      type="button"
+      class="w-full group flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-400 text-black font-title text-sm font-bold uppercase tracking-widest shadow-lg shadow-emerald-400/20 active:scale-[0.98] transition-all"
+    >
+      <span>Confirmar alteração</span>
+      <i data-lucide="check" class="w-4 h-4"></i>
+    </button>
   </div>
 </div>
 
@@ -431,6 +524,14 @@
   const withdrawalModal = document.getElementById("withdrawalModal");
   const openWithdrawalModalBtn = document.getElementById("openWithdrawalModal");
   const closeWithdrawalModalBtn = document.getElementById("closeWithdrawalModal");
+  const withdrawAmountInput = document.getElementById("withdrawAmount");
+  const withdrawRateInfo = document.getElementById("withdrawRateInfo");
+  const withdrawConversionInfo = document.getElementById("withdrawConversionInfo");
+  const depositQuoteLoading = document.getElementById("depositQuoteLoading");
+  const depositModalQuoteLoading = document.getElementById("depositModalQuoteLoading");
+  const withdrawQuoteLoading = document.getElementById("withdrawQuoteLoading");
+  const withdrawalForm = document.getElementById("withdrawalForm");
+  const userAvailableBalanceInput = document.getElementById("userAvailableBalance");
 
   function openDepositModal() {
     depositModal?.classList.remove("hidden");
@@ -441,8 +542,9 @@
     depositModal?.classList.add("hidden");
   }
 
-  function formatUSD(value) {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(value || 0));
+  function formatUSD(val) {
+    if (isNaN(val)) return "$ 0.00";
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(val);
   }
 
   function formatBRL(value) {
@@ -458,10 +560,18 @@
   async function updateDepositQuote() {
     const amount = Number(depositAmountInput?.value || 0);
     if (!amount || amount <= 0) {
+      if (depositRateInfo) depositRateInfo.classList.add("opacity-0");
+      if (depositConversionInfo) depositConversionInfo.classList.add("opacity-0");
       setQuotePlaceholder();
       return;
     }
     const reqId = ++quoteReqSeq;
+    if (depositRateInfo) depositRateInfo.classList.add("opacity-0");
+    if (depositConversionInfo) depositConversionInfo.classList.add("opacity-0");
+    if (depositQuoteLoading) depositQuoteLoading.classList.remove("hidden");
+    depositQuoteLoading?.classList.add("flex");
+    if (depositModalQuoteLoading) depositModalQuoteLoading.classList.remove("hidden");
+    depositModalQuoteLoading?.classList.add("flex");
     try {
       const response = await fetch(`/api/deposit/quote?amount=${encodeURIComponent(amount)}`);
       if (!response.ok) {
@@ -472,16 +582,35 @@
       }
       const data = await response.json();
       if (reqId !== quoteReqSeq) return;
+      if (depositQuoteLoading) {
+        depositQuoteLoading.classList.add("hidden");
+        depositQuoteLoading.classList.remove("flex");
+      }
+      if (depositModalQuoteLoading) {
+        depositModalQuoteLoading.classList.add("hidden");
+        depositModalQuoteLoading.classList.remove("flex");
+      }
       if (depositRateInfo) {
         depositRateInfo.textContent = `Cotação PTAX: 1 USD = ${formatBRL(data.ptax_rate)}`;
+        depositRateInfo.classList.remove("opacity-0");
       }
       if (depositConversionInfo) {
         depositConversionInfo.textContent = `Conversão estimada: ${formatUSD(data.amount_usd)} ≈ ${formatBRL(data.amount_brl)}`;
+        depositConversionInfo.classList.remove("opacity-0");
       }
     } catch (_error) {
       if (reqId !== quoteReqSeq) return;
       if (depositRateInfo) depositRateInfo.textContent = "Cotação PTAX: indisponível no momento";
       if (depositConversionInfo) depositConversionInfo.textContent = "Conversão estimada: -";
+    } finally {
+      if (reqId === quoteReqSeq && depositQuoteLoading) {
+        depositQuoteLoading.classList.add("hidden");
+        depositQuoteLoading.classList.remove("flex");
+      }
+      if (reqId === quoteReqSeq && depositModalQuoteLoading) {
+        depositModalQuoteLoading.classList.add("hidden");
+        depositModalQuoteLoading.classList.remove("flex");
+      }
     }
   }
 
@@ -503,17 +632,110 @@
 
   function openWithdrawalModal() {
     withdrawalModal?.classList.remove("hidden");
+    updateWithdrawQuote();
   }
 
   function closeWithdrawalModal() {
     withdrawalModal?.classList.add("hidden");
   }
 
+  async function updateWithdrawQuote() {
+    const amount = Number(withdrawAmountInput?.value || 0);
+    if (!amount || amount <= 0) {
+      if (withdrawRateInfo) withdrawRateInfo.classList.add("opacity-0");
+      if (withdrawConversionInfo) withdrawConversionInfo.classList.add("opacity-0");
+      return;
+    }
+    if (withdrawQuoteLoading) withdrawQuoteLoading.classList.remove("hidden");
+    withdrawQuoteLoading?.classList.add("flex");
+    if (withdrawRateInfo) withdrawRateInfo.classList.add("opacity-0");
+    if (withdrawConversionInfo) withdrawConversionInfo.classList.add("opacity-0");
+    try {
+      const response = await fetch(`/api/deposit/quote?amount=${encodeURIComponent(amount)}`);
+      if (!response.ok) {
+        if (withdrawRateInfo) withdrawRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+        if (withdrawConversionInfo) withdrawConversionInfo.textContent = "Conversão estimada: -";
+        return;
+      }
+      const data = await response.json();
+      if (withdrawRateInfo) {
+        withdrawRateInfo.textContent = `Cotação PTAX: 1 USD = ${formatBRL(data.ptax_rate)}`;
+        withdrawRateInfo.classList.remove("opacity-0");
+      }
+      if (withdrawConversionInfo) {
+        withdrawConversionInfo.textContent = `Conversão estimada: ${formatUSD(data.amount_usd)} ≈ ${formatBRL(data.amount_brl)}`;
+        withdrawConversionInfo.classList.remove("opacity-0");
+      }
+    } catch (_error) {
+      if (withdrawRateInfo) withdrawRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+      if (withdrawConversionInfo) withdrawConversionInfo.textContent = "Conversão estimada: -";
+    } finally {
+      if (withdrawQuoteLoading) {
+        withdrawQuoteLoading.classList.add("hidden");
+        withdrawQuoteLoading.classList.remove("flex");
+      }
+    }
+  }
+
+  let withdrawQuoteTimer = null;
+  withdrawAmountInput?.addEventListener("input", () => {
+    if (withdrawQuoteTimer) clearTimeout(withdrawQuoteTimer);
+    withdrawQuoteTimer = setTimeout(updateWithdrawQuote, 250);
+  });
+
   openWithdrawalModalBtn?.addEventListener("click", openWithdrawalModal);
   closeWithdrawalModalBtn?.addEventListener("click", closeWithdrawalModal);
   withdrawalModal?.addEventListener("click", (event) => {
     if (event.target === withdrawalModal || event.target === withdrawalModal.firstElementChild) {
       closeWithdrawalModal();
+    }
+  });
+
+  withdrawalForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const amount = Number(withdrawAmountInput?.value || 0);
+    const available = Number(userAvailableBalanceInput?.value || 0);
+
+    if (!amount || amount <= 0) {
+      window.showToast("Informe um valor válido para o saque.", "error");
+      return;
+    }
+
+    if (amount > available) {
+      window.showToast("Saldo insuficiente para este saque.", "error");
+      return;
+    }
+
+    const submitBtn = withdrawalForm.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+
+    try {
+      const formData = new FormData(withdrawalForm);
+      const response = await fetch(withdrawalForm.action, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!response.ok) {
+        const message = await window.extractApiErrorMessage(
+          response,
+          "Não foi possível processar seu saque agora."
+        );
+        window.showToast(message, "error");
+        return;
+      }
+
+      window.showToast("Solicitação de saque enviada com sucesso!");
+      window.location.reload();
+    } catch (error) {
+      window.handleNetworkError("Falha de conexão ao solicitar saque.");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
     }
   });
 
@@ -653,35 +875,173 @@
     });
   });
 
-  (function () {
-    const typeSelect = document.getElementById("withdraw_pix_type");
-    const input = document.getElementById("withdraw_pix_key");
-    if (!typeSelect || !input) return;
-    function maskPix(value, type) {
-      const digits = value.replace(/\D/g, "");
-      if (type === "cpf") {
-        return digits.slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
-      }
-      if (type === "telefone") {
-        if (digits.length <= 2) return digits.replace(/(\d{0,2})/, "($1");
-        if (digits.length <= 7) return digits.replace(/(\d{2})(\d{0,5})/, "($1) $2");
-        return digits.slice(0, 11).replace(/(\d{2})(\d{5})(\d{0,4})/, "($1) $2-$3");
-      }
-      return value;
+  // Edit Investment Logic
+  const editInvModal = document.getElementById("editInvestmentModal");
+  const closeEditInvBtn = document.getElementById("closeEditInvestmentModal");
+  const editInvBackdrop = document.getElementById("editInvestmentBackdrop");
+  const submitEditInvBtn = document.getElementById("submitEditInvestment");
+  const newAmountInput = document.getElementById("newInvestmentAmount");
+  const currentAmountDisplay = document.getElementById("currentAmountDisplay");
+  const editInvTournamentName = document.getElementById("editInvTournamentName");
+  const editDiffDisplay = document.getElementById("editDiffDisplay");
+
+  let activeEditInvId = null;
+  let activeCurrentAmount = 0;
+  let activeCurrentPct = 0;
+  let activeBuyin = 0;
+  let activeMarkup = 1;
+  let activeTotalQuota = 100;
+  let activeTotalSold = 0;
+
+  function openEditModal(invId, amount, currentPct, buyin, markup, totalQuota, totalSold, tournamentName) {
+    activeEditInvId = invId;
+    activeCurrentAmount = Number(amount);
+    activeCurrentPct = Number(currentPct);
+    activeBuyin = Number(buyin);
+    activeMarkup = Number(markup);
+    activeTotalQuota = Number(totalQuota);
+    activeTotalSold = Number(totalSold);
+    
+    if (editInvTournamentName) editInvTournamentName.textContent = tournamentName;
+    if (currentAmountDisplay) currentAmountDisplay.textContent = formatUSD(activeCurrentAmount);
+    if (newAmountInput) {
+      newAmountInput.value = activeCurrentAmount.toFixed(2);
+      updateEditDiff();
     }
-    function applyMask() {
-      const type = typeSelect.value;
-      const start = input.selectionStart;
-      const oldLen = input.value.length;
-      input.value = maskPix(input.value, type);
-      if (type === "cpf") input.setAttribute("maxlength", "14");
-      else if (type === "telefone") input.setAttribute("maxlength", "15");
-      else input.removeAttribute("maxlength");
-      const newLen = input.value.length;
-      input.setSelectionRange(Math.max(0, start + (newLen - oldLen)), Math.max(0, start + (newLen - oldLen)));
+    
+    editInvModal?.classList.remove("hidden");
+    if (window.lucide) window.lucide.createIcons();
+  }
+
+  function closeEditModal() {
+    editInvModal?.classList.add("hidden");
+    activeEditInvId = null;
+  }
+
+  function updateEditDiff() {
+    const newVal = Number(newAmountInput?.value || 0);
+    const diff = newVal - activeCurrentAmount;
+    
+    if (!editDiffDisplay) return;
+    
+    // Calcula novo percentual
+    const totalCostPerOnePct = (activeBuyin * activeMarkup) / 100;
+    const newPct = totalCostPerOnePct > 0 ? (newVal / totalCostPerOnePct) : 0;
+    const editPctDisplay = document.getElementById("editPctDisplay");
+    if (editPctDisplay) {
+      editPctDisplay.textContent = newPct.toFixed(2) + "%";
     }
-    typeSelect.addEventListener("change", () => { input.value = input.value || ""; input.placeholder = typeSelect.value === "cpf" ? "000.000.000-00" : typeSelect.value === "telefone" ? "(00) 00000-0000" : "seu@email.com"; applyMask(); });
-    input.addEventListener("input", applyMask);
-  })();
+
+    // Validação de cota
+    const otherSoldPct = activeTotalSold - activeCurrentPct;
+    const maxAllowedPct = activeTotalQuota - otherSoldPct;
+    
+    const isExceeding = newPct > (maxAllowedPct + 0.001); // Add a small epsilon for float comparison
+    
+    if (isExceeding) {
+        editDiffDisplay.classList.remove("hidden");
+        editDiffDisplay.className = "text-[10px] font-mono uppercase px-1 text-red-500 py-1 border-t border-white/5 mt-2";
+        const maxUsd = (maxAllowedPct * totalCostPerOnePct);
+        editDiffDisplay.textContent = `AVISO: Valor excede a cota disponível (Máximo: ${maxAllowedPct.toFixed(2)}% / US$ ${maxUsd.toFixed(2)})`;
+        submitEditInvBtn.disabled = true;
+        return;
+    }
+
+    submitEditInvBtn.disabled = false;
+
+    if (newVal <= 0 || newVal === activeCurrentAmount) {
+        editDiffDisplay.classList.add("hidden");
+        return;
+    }
+    
+    editDiffDisplay.classList.remove("hidden");
+    if (diff > 0) {
+      editDiffDisplay.className = "text-[10px] font-mono uppercase px-1 text-amber-500 py-1 border-t border-white/5 mt-2";
+      editDiffDisplay.textContent = `+ ${formatUSD(diff)} (será descontado do saldo)`;
+    } else {
+      editDiffDisplay.className = "text-[10px] font-mono uppercase px-1 text-emerald-400 py-1 border-t border-white/5 mt-2";
+      editDiffDisplay.textContent = `- ${formatUSD(Math.abs(diff))} (voltará para o saldo)`;
+    }
+  }
+
+  newAmountInput?.addEventListener("input", updateEditDiff);
+  closeEditInvBtn?.addEventListener("click", closeEditModal);
+  editInvBackdrop?.addEventListener("click", closeEditModal);
+
+  // Use event delegation for the edit button
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest(".edit-investment-btn-v2");
+    if (btn) {
+      openEditModal(
+        btn.dataset.invId,
+        btn.dataset.currentAmount,
+        btn.dataset.currentPct,
+        btn.dataset.buyin,
+        btn.dataset.markup,
+        btn.dataset.totalQuota,
+        btn.dataset.totalSold,
+        btn.dataset.tournament
+      );
+    }
+  });
+
+  submitEditInvBtn?.addEventListener("click", async () => {
+    const amount = Number(newAmountInput?.value || 0);
+    if (!amount || amount <= 0) {
+      window.showToast("Informe um valor válido.", "error");
+      return;
+    }
+    
+    if (amount === activeCurrentAmount) {
+      closeEditModal();
+      return;
+    }
+
+    submitEditInvBtn.disabled = true;
+    try {
+      const response = await fetch("/api/invest/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ investment_id: activeEditInvId, amount }),
+      });
+
+      if (response.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+
+      if (!response.ok) {
+        const message = await window.extractApiErrorMessage(response, "Não foi possível atualizar seu apoio agora.");
+        window.showToast(message, "error");
+        return;
+      }
+
+      window.showToast("Apoio atualizado com sucesso!");
+      closeEditModal();
+      window.location.reload();
+    } catch (error) {
+      window.handleNetworkError("Falha de conexão ao atualizar apoio.");
+    } finally {
+      submitEditInvBtn.disabled = false;
+    }
+  });
+
+  // Handle auto-edit from URL query param
+  const urlParams = new URLSearchParams(window.location.search);
+  const editInvId = urlParams.get("edit_inv");
+  if (editInvId) {
+    // Wait a bit for other potential initializations
+    setTimeout(() => {
+      const editBtn = document.querySelector(`.edit-investment-btn-v2[data-inv-id="${editInvId}"]`);
+      if (editBtn) {
+        const tabBtn = document.querySelector('.dashboard-tab[data-tab="historico"]');
+        tabBtn?.click();
+        editBtn.click();
+      }
+    }, 100);
+  }
+
+  if (window.lucide) window.lucide.createIcons();
+
 </script>
 {% endblock %}

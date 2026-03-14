@@ -75,12 +75,14 @@ def sync_offer_escrow(db: Session, offer: StakeOffer) -> TournamentEscrow:
     collected = q_money(Decimal(str(total_collected or 0)))
     escrow.total_collected = collected
 
-    if escrow.status == "COLLECTING" and escrow.total_required > 0 and collected >= Decimal(str(escrow.total_required)):
+    if escrow.total_required > 0 and collected >= Decimal(str(escrow.total_required)):
         escrow.status = "COMPLETE"
         escrow.completed_at = datetime.now(timezone.utc)
         offer.escrow_status = "COMPLETE"
-    elif escrow.status == "COLLECTING":
+    else:
+        escrow.status = "COLLECTING"
         offer.escrow_status = "COLLECTING"
+        escrow.completed_at = None
 
     return escrow
 

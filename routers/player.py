@@ -9,9 +9,10 @@ from sqlalchemy.orm import Session, joinedload
 
 from db import get_db
 from models import CallSchedule, MatchResult, StakeOffer, Tournament, Wallet, WithdrawalRequest
-from routers.auth import fetch_current_user, get_wallet_summary, is_user_kyc_approved
+from routers.auth import fetch_current_user, get_wallet_summary, is_user_kyc_approved, get_password_hash, verify_password, is_strong_password
 from services.notifications import notify_all_admins
-from services.storage import save_match_file
+from services.storage import save_match_file, save_profile_photo
+from urllib.parse import quote_plus
 
 templates = Jinja2Templates(directory="templates")
 router = APIRouter()
@@ -131,12 +132,14 @@ async def submit_player_result(
                 posicao_final=posicao_final,
                 valor_premio=premio_value,
                 valor_enviado=enviado_value,
-                print_url=print_url,
-                comprovante_url=comprovante_url,
                 review_status="UNDER_REVIEW",
                 admin_verified=False,
             )
         )
+    
+    if offer.tournament.status != "Cancelado":
+        offer.tournament.status = "Finalizado"
+
     if user.is_blocked and user.blocked_reason and "resultado" in user.blocked_reason.lower():
         user.is_blocked = False
         user.blocked_reason = None
@@ -149,12 +152,15 @@ async def submit_player_result(
             f"{user.nome} enviou/atualizou resultado do torneio #{offer.tournament_id} "
             f"com prêmio informado de US$ {premio_value:.2f}."
         ),
-        action_url="/admin/results",
+        action_url="/admin/dashboard?tab=resultados",
+        target_role="admin",
     )
     db.commit()
     url = "/player/results/new?sent=1"
     if embed == "1":
         url += "&embed=1"
+    elif embed == "inline":
+        url = "/player/offers?result_sent=1"
     return RedirectResponse(url=url, status_code=303)
 
 
@@ -257,7 +263,95 @@ def request_withdrawal(
             f"Apoiador/Jogador: {user.nome} | Valor: US$ {amount_value:.2f} | "
             f"PIX destino: {destination_pix}"
         ),
-        action_url="/admin/dashboard",
+        action_url="/admin/dashboard?tab=saques",
+        target_role="admin",
     )
     db.commit()
     return RedirectResponse(url="/dashboard?withdraw_requested=1", status_code=303)
+
+
+# --- ROTAS DE PERFIL DO JOGADOR ---
+
+@router.post("/player/profile/update")
+def update_player_profile(
+    request: Request,
+    nome: str = Form(...),
+    pix_key: str = Form(""),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if user.tipo not in ("jogador", "admin"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+        
+    nome = (nome or "").strip()
+    pix_key = (pix_key or "").strip()
+    
+    if not nome:
+        return RedirectResponse(url="/player/offers?tab=perfil&pwd_error=" + quote_plus("Nome não pode ser vazio."), status_code=303)
+        
+    user.nome = nome[:120]
+    user.pix_key = pix_key[:255] if pix_key else None
+    db.commit()
+    return RedirectResponse(url="/player/offers?tab=perfil&profile_success=1", status_code=303)
+
+
+@router.post("/player/profile/photo")
+async def update_player_profile_photo(
+    request: Request,
+    photo: UploadFile = File(None),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if user.tipo not in ("jogador", "admin"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    if not photo or not getattr(photo, "filename", None) or not photo.filename.strip():
+        return RedirectResponse(url="/player/offers?tab=perfil&pwd_error=" + quote_plus("Selecione uma imagem."), status_code=303)
+        
+    try:
+        url = await save_profile_photo(photo, user_id=user.id)
+    except ValueError as e:
+        return RedirectResponse(url="/player/offers?tab=perfil&pwd_error=" + quote_plus(str(e)), status_code=303)
+        
+    user.profile_photo_url = url
+    db.commit()
+    return RedirectResponse(url="/player/offers?tab=perfil&profile_success=1", status_code=303)
+
+
+@router.post("/player/password/update")
+def update_player_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    user = fetch_current_user(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    if user.tipo not in ("jogador", "admin"):
+        return RedirectResponse(url="/dashboard", status_code=303)
+
+    if not verify_password(current_password, user.password_hash):
+        msg = quote_plus("Senha atual inválida.")
+        return RedirectResponse(url=f"/player/offers?tab=perfil&pwd_error={msg}", status_code=303)
+        
+    if new_password != confirm_password:
+        msg = quote_plus("A confirmação da nova senha não confere.")
+        return RedirectResponse(url=f"/player/offers?tab=perfil&pwd_error={msg}", status_code=303)
+        
+    if not is_strong_password(new_password):
+        msg = quote_plus("A nova senha deve ter 8+ caracteres, letras e números.")
+        return RedirectResponse(url=f"/player/offers?tab=perfil&pwd_error={msg}", status_code=303)
+        
+    if verify_password(new_password, user.password_hash):
+        msg = quote_plus("A nova senha não pode ser igual à atual.")
+        return RedirectResponse(url=f"/player/offers?tab=perfil&pwd_error={msg}", status_code=303)
+
+    user.password_hash = get_password_hash(new_password)
+    db.commit()
+    return RedirectResponse(url="/player/offers?tab=perfil&pwd_success=1", status_code=303)

@@ -29,6 +29,7 @@ def _create_notification(
     title: str,
     message: str,
     action_url: str | None = None,
+    target_role: str | None = None,
 ) -> None:
     if _notification_exists(db, user_id, n_type, action_url):
         return
@@ -39,6 +40,7 @@ def _create_notification(
             title=title,
             message=message,
             action_url=action_url,
+            target_role=target_role,
         )
     )
 
@@ -90,6 +92,7 @@ def run_result_deadline_jobs(db: Session) -> dict:
                     title="Conta suspensa",
                     message="Informe o resultado do torneio para desbloquear sua conta.",
                     action_url=action_url,
+                    target_role="jogador",
                 )
                 blocked += 1
         else:
@@ -100,6 +103,7 @@ def run_result_deadline_jobs(db: Session) -> dict:
                 title="Informe o resultado",
                 message=f"Você tem até 24h após o torneio para informar o resultado. Torneio: {t.nome or '#' + str(t.id)}",
                 action_url=action_url,
+                target_role="jogador",
             )
             reminded += 1
 

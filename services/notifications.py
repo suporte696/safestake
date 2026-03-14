@@ -12,6 +12,7 @@ def create_notification(
     title: str,
     message: str,
     action_url: str | None = None,
+    target_role: str | None = None,
 ) -> Notification:
     item = Notification(
         user_id=user_id,
@@ -19,6 +20,7 @@ def create_notification(
         title=title,
         message=message,
         action_url=action_url,
+        target_role=target_role,
     )
     db.add(item)
     return item
@@ -31,6 +33,7 @@ def notify_all_admins(
     title: str,
     message: str,
     action_url: str | None = None,
+    target_role: str | None = "admin",
 ) -> int:
     admins = db.execute(select(User).where(User.tipo == "admin")).scalars().all()
     for admin in admins:
@@ -41,5 +44,6 @@ def notify_all_admins(
             title=title,
             message=message,
             action_url=action_url,
+            target_role=target_role,
         )
     return len(admins)

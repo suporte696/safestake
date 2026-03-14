@@ -534,6 +534,8 @@ def login(
         )
 
     request.session["user_id"] = user.id
+    if user.tipo == "admin":
+        return RedirectResponse(url="/admin/dashboard", status_code=303)
     # Redireciona para a página principal de marketplace após login
     return RedirectResponse(url="/", status_code=303)
 
@@ -551,6 +553,7 @@ async def register(
     request: Request,
     nome: str = Form(...),
     email: str = Form(...),
+    pix_key_type: str = Form(...),
     pix_key: str = Form(...),
     senha: str = Form(...),
     confirmar_senha: str = Form(...),
@@ -559,6 +562,7 @@ async def register(
     form_data = {
         "nome": nome,
         "email": email,
+        "pix_key_type": pix_key_type,
         "pix_key": pix_key,
     }
 
@@ -569,6 +573,8 @@ async def register(
 
     if not EMAIL_PATTERN.match(normalized_email):
         return render_register(request, "Informe um email válido.", form_data)
+    if not pix_key_type:
+        return render_register(request, "O tipo de chave PIX é obrigatório.", form_data)
     if not normalized_pix_key:
         return render_register(request, "A Chave Pix é obrigatória para cadastro.", form_data)
     if not is_strong_password(senha):

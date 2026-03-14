@@ -317,6 +317,7 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     message: Mapped[str] = mapped_column(String(255), nullable=False)
     action_url: Mapped[str | None] = mapped_column(String(255))
+    target_role: Mapped[str | None] = mapped_column(String(32), nullable=True)  # 'admin', 'jogador', or None
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

@@ -3,139 +3,255 @@
 {% block title %}Oferta | SAFE STAKE{% endblock %}
 
 {% block content %}
-<section class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-  <div class="bg-black border border-white/10 rounded-2xl p-8 space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-4">
-        <img
-          src="{{ offer.player_avatar if offer else 'https://i.pravatar.cc/120?img=48' }}"
-          alt="Avatar jogador"
-          class="w-14 h-14 rounded-full border border-emerald-400/50"
-        />
-        <div>
-          <p class="text-sm text-gray-400">Player</p>
-          <p class="text-xl font-semibold">{{ offer.player_name if offer else 'Jogador Elite' }}</p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        {% if offer.is_closed %}
-        <span class="text-xs px-2 py-1 rounded-full border border-red-500/50 text-red-400">Encerrada</span>
-        {% endif %}
-        <span class="font-mono text-emerald-400 text-sm">Markup {{ offer.markup if offer else '1.10' }}</span>
-      </div>
+<section class="max-w-6xl mx-auto">
+  <!-- Success Notification -->
+  <div id="successMessage" class="hidden mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3 text-emerald-400 shadow-lg shadow-emerald-500/5 animate-in fade-in slide-in-from-top-4 duration-500">
+    <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+      <i data-lucide="check-circle" class="w-6 h-6"></i>
     </div>
-
-    <div class="space-y-3">
-      <h1 class="font-title text-2xl uppercase">
-        {{ offer.tournament_name if offer else 'Torneio de Destaque' }}
-      </h1>
-      <p class="text-gray-300">
-        Sala: <span class="text-white">{{ offer.room if offer else 'PokerStars' }}</span> ·
-        Buy-in:
-        <span class="font-mono text-emerald-400">
-          US$ {{ "%.2f"|format(offer.buyin) if offer else "215.00" }}
-        </span>
-      </p>
-    </div>
-
-    <div class="space-y-2">
-      <div class="flex items-center justify-between text-xs text-gray-400">
-        <span>Progresso vendido (sobre meta)</span>
-        <span class="font-mono text-emerald-400">{{ "%.2f"|format(offer.progress_sale_pct if offer else 0) }}%</span>
-      </div>
-      <div class="w-full h-2 bg-white/10 rounded-full">
-        <div
-          class="h-2 rounded-full bg-emerald-400"
-          style="width: {{ offer.progress_sale_pct if offer else 0 }}%;"
-        ></div>
-      </div>
-      <p class="text-xs text-gray-500 font-mono">
-        US$ {{ "%.2f"|format(offer.sold_buyin_amount if offer else 0) }} /
-        US$ {{ "%.2f"|format(offer.target_buyin_amount if offer else 0) }}
-      </p>
-    </div>
-
-      <div class="grid gap-4 md:grid-cols-3">
-      <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4">
-        <p class="text-xs text-gray-400">Disponível</p>
-        <p class="font-mono text-emerald-400 text-lg">
-          {{ (offer.total_pct - offer.sold_pct) if offer else 0 }}%
-        </p>
-        {% if offer %}
-        {% set avail_pct = (offer.total_pct - offer.sold_pct) %}
-        {% set avail_usd = (offer.buyin * offer.markup * avail_pct / 100) %}
-        <p class="text-xs text-gray-500 font-mono mt-1">≈ US$ {{ "%.2f"|format(avail_usd) }}</p>
-        {% endif %}
-      </div>
-      <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4">
-        <p class="text-xs text-gray-400">Início</p>
-        <p class="font-mono text-white text-lg">
-          {{ offer.start_time.strftime("%d/%m %H:%M") if offer and offer.start_time else "A definir" }}
-        </p>
-      </div>
-      <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4">
-        <p class="text-xs text-gray-400">Meta do player</p>
-        <p class="font-mono text-white text-lg">
-          {{ offer.total_pct if offer else 0 }}% vendido
-        </p>
-      </div>
+    <div>
+      <p class="font-bold text-sm uppercase tracking-wider">Apoio Confirmado!</p>
+      <p class="text-xs text-emerald-400/80">Seu investimento foi processado com sucesso. A página será atualizada em instantes.</p>
     </div>
   </div>
 
-  <aside class="bg-black border border-white/10 rounded-2xl p-8 space-y-6">
-    <div>
-      <h2 class="font-title text-xl uppercase">Calculadora de ROI</h2>
-      <p class="text-sm text-gray-400">
-        Insira o valor desejado e veja a porcentagem estimada da cota.
-      </p>
-    </div>
-    {% if offer.is_closed %}
-    <div class="border border-red-500/40 bg-red-500/10 text-red-300 rounded-xl px-3 py-2 text-sm">
-      Esta oferta está encerrada. Você ainda pode consultar os detalhes, mas não é mais possível apoiar.
-    </div>
-    {% endif %}
+  <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
+    <!-- Coluna Esquerda: Informações e Status -->
+    <div class="space-y-6">
+      <!-- Tournament & Player Header Card -->
+      <div class="relative overflow-hidden bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 md:p-8 shadow-2xl group">
+        <!-- Abstract Background Accent -->
+        <div class="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/5 blur-[100px] rounded-full group-hover:bg-emerald-500/10 transition-colors duration-700"></div>
+        
+        <div class="relative flex flex-col md:flex-row gap-8 items-start md:items-center justify-between">
+          <div class="space-y-5 flex-1 w-full">
+            <div class="flex items-center gap-2">
+              <span class="flex items-center gap-1.5 px-3 py-1 rounded-full border {{ offer.status_class }} text-[10px] uppercase tracking-widest font-extrabold bg-white/5">
+                {% if offer.status_label == 'Iniciada' or offer.status_label == 'Ativa' %}
+                <span class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                {% elif offer.status_label == 'Meta Atingida' %}
+                <i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>
+                {% elif offer.status_label == 'Encerrada' %}
+                <i data-lucide="x-circle" class="w-3 h-3"></i>
+                {% endif %}
+                {{ offer.status_label }}
+              </span>
+              <span class="px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-400 text-[10px] uppercase tracking-widest font-bold font-mono">
+                Markup {{ offer.markup if offer else '1.10' }}x
+              </span>
+            </div>
 
-    <div class="space-y-4">
-      <label class="text-xs text-gray-400">Valor do investimento (US$)</label>
-      <input
-        id="investmentAmount"
-        type="number"
-        min="0.01"
-        step="0.01"
-        placeholder="0.00"
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-      />
-      <p id="investmentMaxHint" class="text-xs text-gray-500"></p>
-      <p id="investmentWarning" class="text-xs text-amber-400 hidden"></p>
+            <div class="space-y-1">
+              <h1 class="font-title text-2xl md:text-3xl uppercase leading-tight">
+                {{ offer.tournament_name if offer else 'Torneio de Destaque' }}
+              </h1>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-gray-400 text-[13px]">
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="monitor" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  <span class="text-white font-medium">{{ offer.room if offer else 'PokerStars' }}</span>
+                </div>
+                <span class="text-white/10 hidden md:block">|</span>
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="tag" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  <span class="font-mono text-emerald-400 font-bold">US$ {{ "%.2f"|format(offer.buyin) if offer else "215.00" }}</span>
+                </div>
+                <span class="text-white/10 hidden md:block">|</span>
+                <div class="flex items-center gap-1.5">
+                  <i data-lucide="calendar" class="w-3.5 h-3.5 text-emerald-400"></i>
+                  <span>{{ offer.start_time.strftime("%d/%m, %H:%M") if offer and offer.start_time else "A definir" }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 px-4 py-3 bg-white/5 border border-white/10 rounded-xl backdrop-blur-sm">
+            <div class="text-right">
+              <p class="text-[9px] uppercase tracking-widest text-gray-500 font-bold">Jogador</p>
+              <p class="text-sm font-semibold">{{ offer.player_name if offer else 'Jogador Elite' }}</p>
+            </div>
+            <div class="relative w-10 h-10 flex-shrink-0 bg-white/5 rounded-full border border-emerald-400/30 overflow-hidden flex items-center justify-center">
+              <img
+                src="{{ offer.player_avatar if offer else 'https://i.pravatar.cc/120?img=48' }}"
+                onerror="this.src='/static/img/avatar-fallback.svg'; this.onerror=null; this.classList.add('p-1.5');"
+                alt="Avatar jogador"
+                class="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Progress Section Compact -->
+      <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 space-y-5 shadow-xl">
+        <div class="flex items-center justify-between">
+          <div class="space-y-1">
+            <h3 class="text-xs uppercase tracking-widest text-gray-500 font-bold">Progresso da Oferta</h3>
+            <p class="text-[11px] text-gray-600">Fundos arrecadados para o buy-in</p>
+          </div>
+          <div class="px-3 py-1 rounded-lg bg-emerald-400/10">
+            <span class="text-xl font-mono font-extrabold text-emerald-400">{{ "%.2f"|format(offer.progress_sale_pct if offer else 0) }}%</span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <div class="relative w-full h-2 bg-white/5 rounded-full overflow-hidden border border-white/5">
+            <div
+              class="absolute top-0 left-0 h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.2)] transition-all duration-1000"
+              style="width: {{ offer.progress_sale_pct if offer else 0 }}%;"
+            ></div>
+          </div>
+          <div class="flex justify-between items-center text-[9px] uppercase tracking-widest font-mono font-bold">
+            <span class="text-gray-500 text-[10px]">Coletado: <span class="text-white">US$ {{ "%.2f"|format(offer.sold_buyin_amount if offer else 0) }}</span></span>
+            <span class="text-gray-500 text-[10px]">Meta: <span class="text-white">US$ {{ "%.2f"|format(offer.target_buyin_amount if offer else 0) }}</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Stats Cards Compact -->
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div class="bg-[#0a0a0a] border border-white/5 rounded-2xl p-5 space-y-2 hover:border-emerald-500/30 transition-all duration-300">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Disponível</p>
+          <div class="flex items-baseline gap-1">
+            <p class="font-title text-2xl text-emerald-400 font-bold">
+              {{ (offer.total_pct - offer.sold_pct) if offer else 0 }}%
+            </p>
+            <span class="text-xs text-gray-500">/ {{ offer.total_pct }}%</span>
+          </div>
+          {% if offer %}
+          {% set avail_pct = (offer.total_pct - offer.sold_pct) %}
+          {% set avail_usd = (offer.buyin * offer.markup * avail_pct / 100) %}
+          <p class="text-xs text-gray-500 font-mono">≈ US$ {{ "%.2f"|format(avail_usd) }}</p>
+          {% endif %}
+        </div>
+
+        <div class="bg-[#0a0a0a] border border-white/5 rounded-2xl p-5 space-y-2 hover:border-emerald-500/30 transition-all duration-300">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Fatia Total</p>
+          <p class="font-title text-2xl text-white font-bold">
+            {{ offer.total_pct if offer else 0 }}%
+          </p>
+          <p class="text-xs text-gray-500">Da cota do jogador</p>
+        </div>
+
+        <div class="bg-[#0a0a0a] border border-white/5 rounded-2xl p-5 space-y-2 hover:border-emerald-500/30 transition-all duration-300">
+          <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Início</p>
+          <p class="font-title text-2xl text-white font-bold">
+            {{ offer.start_time.strftime("%H:%M") if offer and offer.start_time else "--:--" }}
+          </p>
+          <p class="text-xs text-gray-500">Horário Local</p>
+        </div>
+      </div>
     </div>
 
-    <div class="bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2">
-      <p class="text-xs text-gray-400">Percentual estimado</p>
-      <p id="estimatedPct" class="font-mono text-2xl text-emerald-400">0.00%</p>
-      <p class="text-xs text-gray-500">
-        Markup aplicado: {{ offer.markup if offer else "1.00" }}
-      </p>
-    </div>
+    <!-- ROI Calculator Sidebar Compact -->
+    <aside class="space-y-6">
+      <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 md:p-8 space-y-6 sticky top-24 shadow-2xl overflow-hidden group/sidebar">
+        <!-- Abstract Background Accent -->
+        <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/5 blur-[80px] rounded-full group-hover/sidebar:bg-emerald-500/10 transition-colors duration-700"></div>
 
-    <button
-      id="confirmInvest"
-      {% if offer.is_closed %}disabled{% endif %}
-      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30 {% if offer.is_closed %}opacity-60 cursor-not-allowed{% endif %}"
-    >
-      Confirmar apoio
-    </button>
+        <div class="relative space-y-6">
+          <div class="space-y-1.5">
+            <h2 class="font-title text-xl uppercase tracking-wider text-white">Calcular <span class="text-emerald-400">Apoio</span></h2>
+            <p class="text-xs text-gray-500">Quanto você deseja apoiar?</p>
+          </div>
 
-    <button
-      type="button"
-      id="openBidModal"
-      disabled
-      class="w-full px-5 py-3 rounded-full border border-white/20 text-gray-500 cursor-not-allowed flex items-center justify-center gap-2"
-      title="Em breve"
-    >
-      <span aria-hidden="true">🔒</span>
-      Em breve
-    </button>
-  </aside>
+        {% if not offer.can_support %}
+          {% if offer.status_label == 'Iniciada' %}
+          <div class="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 flex gap-2 text-blue-300">
+            <i data-lucide="play-circle" class="w-4 h-4 flex-shrink-0"></i>
+            <p class="text-[11px] leading-relaxed font-medium">Partida em andamento. Apoios encerrados.</p>
+          </div>
+          {% elif offer.status_label == 'Finalizada' %}
+          <div class="p-3 rounded-xl bg-gray-500/10 border border-gray-500/20 flex gap-2 text-gray-300">
+            <i data-lucide="check-square" class="w-4 h-4 flex-shrink-0"></i>
+            <p class="text-[11px] leading-relaxed font-medium">Partida finalizada. Resultados apurados.</p>
+          </div>
+          {% elif offer.progress_sale_pct >= 100 %}
+          <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 flex gap-2 text-amber-300">
+            <i data-lucide="lock" class="w-4 h-4 flex-shrink-0"></i>
+            <p class="text-[11px] leading-relaxed font-medium font-bold uppercase tracking-tight">Cota atingida</p>
+          </div>
+          {% else %}
+          <div class="p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex gap-2 text-red-300">
+            <i data-lucide="alert-circle" class="w-4 h-4 flex-shrink-0"></i>
+            <p class="text-[11px] leading-relaxed font-medium">Encerrada. Não disponível agora.</p>
+          </div>
+          {% endif %}
+        {% endif %}
+
+        <div class="space-y-4">
+          <div class="space-y-2">
+            <div class="relative">
+              <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-mono font-bold text-sm">$</span>
+              <input
+                id="investmentAmount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                placeholder="0.00"
+                {% if not offer.can_support %}disabled{% endif %}
+                class="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-4 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
+            <p id="investmentMaxHint" class="text-[9px] text-gray-500 px-1"></p>
+            <p id="investmentWarning" class="text-[10px] text-amber-500 font-medium hidden px-1"></p>
+          </div>
+
+          <div class="bg-emerald-500/5 border border-emerald-500/10 rounded-xl p-4 space-y-3">
+            <div class="flex justify-between items-end">
+              <p class="text-[9px] uppercase tracking-widest text-emerald-500/70 font-bold">Porção Estimada</p>
+              <p id="estimatedPct" class="font-mono text-2xl text-emerald-400 font-bold leading-none">0.00%</p>
+            </div>
+            
+            <div class="pt-3 border-t border-emerald-500/10 space-y-1.5">
+              <div class="flex justify-between text-[9px] uppercase tracking-widest text-gray-400 font-medium">
+                <span>Markup</span>
+                <span class="text-white font-mono">{{ offer.markup if offer else "1.00" }}x</span>
+              </div>
+              <div id="detailedBreakdown" class="hidden space-y-1.5 pt-1.5">
+                <!-- Injected via JS -->
+              </div>
+            </div>
+          </div>
+
+          <button
+            id="confirmInvest"
+            {% if not offer.can_support %}disabled{% endif %}
+            class="w-full group relative flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-emerald-400 text-black font-title text-sm font-bold uppercase tracking-widest shadow-lg shadow-emerald-400/10 active:scale-[0.98] transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            <span>Confirmar Apoio</span>
+            <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+          </button>
+
+          {% if user_investment %}
+          <div class="pt-2">
+            <a
+              href="/dashboard?tab=historico&edit_inv={{ user_investment.id }}"
+              class="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl bg-emerald-400 text-black font-title text-[11px] font-bold uppercase tracking-widest shadow-lg shadow-emerald-400/10 active:scale-[0.98] transition-all"
+            >
+              <i data-lucide="edit-3" class="w-4 h-4"></i>
+              <span>Editar seu apoio</span>
+            </a>
+            <p class="text-[9px] text-gray-500 text-center mt-2 px-1">
+              Você já apoiou US$ {{ "%.2f"|format(user_investment.amount) }} ({{ user_investment.pct }}%) nesta oferta.
+            </p>
+          </div>
+          {% else %}
+          <button
+            type="button"
+            class="w-full flex items-center justify-center gap-2 py-2 text-[9px] text-gray-600 hover:text-gray-400 transition-colors uppercase tracking-widest font-bold"
+            id="openBidModal"
+            disabled
+          >
+            <i data-lucide="lock" class="w-3 h-3"></i>
+            Custom proposal
+          </button>
+          {% endif %}
+        </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
 </section>
 
 <!-- Modal Bid -->
@@ -194,29 +310,31 @@
 
 <script>
   const offerId = {{ offer.id if offer else "null" }};
+  const userInvestmentId = {{ user_investment.id if user_investment else "null" }};
   const buyin = Number("{{ offer.buyin if offer else 0 }}");
   const markup = Number("{{ offer.markup if offer else 1 }}");
   const totalPct = Number("{{ offer.total_pct if offer else 0 }}");
   const soldPct = Number("{{ offer.sold_pct if offer else 0 }}");
-  const isClosed = {{ "true" if offer and offer.is_closed else "false" }};
+  const canSupport = {{ "true" if offer and offer.can_support else "false" }};
   const hasWallet = {{ "true" if wallet else "false" }};
   const walletAvailable = Number("{{ wallet.saldo_disponivel if wallet else 0 }}");
   const availablePct = Math.max(0, totalPct - soldPct);
+  
   const maxOfferAmount = (buyin > 0 && markup > 0) ? ((buyin * markup * availablePct) / 100) : 0;
   const maxInvestAmount = hasWallet ? Math.min(maxOfferAmount, Math.max(0, walletAvailable)) : maxOfferAmount;
+  
   const input = document.getElementById("investmentAmount");
   const estimatedPct = document.getElementById("estimatedPct");
-  const estimatedSummary = document.createElement("p");
-  estimatedSummary.className = "text-xs text-gray-400 mt-2 leading-relaxed";
-  estimatedSummary.id = "estimatedSummary";
-  estimatedPct?.parentElement?.appendChild(estimatedSummary);
+  const detailedBreakdown = document.getElementById("detailedBreakdown");
   const confirmButton = document.getElementById("confirmInvest");
   const investmentMaxHint = document.getElementById("investmentMaxHint");
   const investmentWarning = document.getElementById("investmentWarning");
 
   const formatPct = (value) => `${value.toFixed(2)}%`;
-  const formatUSD = (value) =>
-    `US$ ${Number(value || 0).toFixed(2).replace(".", ",")}`;
+  const formatUSD = (val) => {
+    if (isNaN(val)) return "US$ 0,00";
+    return `US$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
 
   const clampToMax = (value) => {
     if (!Number.isFinite(value)) return 0;
@@ -226,18 +344,18 @@
 
   const validateAmount = (amount) => {
     if (!amount || amount <= 0) {
-      return { valid: false, reason: "Informe um valor maior que zero." };
+      return { valid: false, reason: "" }; // Silent for empty
     }
-    if (isClosed) {
-      return { valid: false, reason: "Oferta encerrada. Não é mais possível apoiar." };
+    if (!canSupport) {
+      return { valid: false, reason: "Apoios encerrados." };
     }
     if (!maxOfferAmount || maxOfferAmount <= 0 || availablePct <= 0) {
-      return { valid: false, reason: "Esta oferta não possui cota disponível no momento." };
+      return { valid: false, reason: "Cota esgotada." };
     }
     if (amount > maxOfferAmount) {
       return {
         valid: false,
-        reason: `Valor acima do máximo disponível para esta oferta (${formatUSD(maxOfferAmount)}).`,
+        reason: `Máximo: ${formatUSD(maxOfferAmount)}`,
       };
     }
     return { valid: true, reason: "" };
@@ -246,10 +364,12 @@
   const updateEstimate = () => {
     const amount = Number(input.value || 0);
     const validation = validateAmount(amount);
+    
     if (!validation.valid || !buyin || !markup) {
       estimatedPct.textContent = "0.00%";
       confirmButton.disabled = true;
-      confirmButton.classList.add("opacity-60", "cursor-not-allowed");
+      detailedBreakdown.classList.add("hidden");
+      
       if (validation.reason) {
         investmentWarning.textContent = validation.reason;
         investmentWarning.classList.remove("hidden");
@@ -260,31 +380,41 @@
     }
 
     confirmButton.disabled = false;
-    confirmButton.classList.remove("opacity-60", "cursor-not-allowed");
     investmentWarning.classList.add("hidden");
-    const pct = (amount / (buyin * markup)) * 100;
+    const totalCost = buyin * markup;
+    const pct = totalCost > 0 ? (amount / totalCost) * 100 : 0;
     estimatedPct.textContent = formatPct(pct);
 
-    // Detalhamento solicitado pelo cliente:
-    // Buy-in (cota base), valor de markup e total do investimento
-    if (estimatedSummary) {
+    if (detailedBreakdown) {
       const baseAmount = amount / markup;
       const markupFee = amount - baseAmount;
-      estimatedSummary.innerHTML =
-        `Buy-in: <span class="font-mono text-emerald-300">${formatUSD(baseAmount)}</span><br>` +
-        `Markup ${markup.toFixed(2)}: <span class="font-mono text-emerald-300">${formatUSD(markupFee)}</span><br>` +
-        `Total do investimento: <span class="font-mono text-emerald-300">${formatUSD(amount)}</span>`;
+      detailedBreakdown.classList.remove("hidden");
+      detailedBreakdown.innerHTML = `
+        <div class="flex justify-between text-[10px] text-gray-500">
+          <span>Base para prêmios (Meta)</span>
+          <span class="text-white font-mono">${formatUSD(baseAmount)}</span>
+        </div>
+        <div class="flex justify-between text-[10px] text-gray-500">
+          <span>Markup Fee</span>
+          <span class="text-white font-mono">${formatUSD(markupFee)}</span>
+        </div>
+        <div class="flex justify-between text-[10px] text-emerald-400 font-bold pt-1 border-t border-emerald-500/10">
+          <span>Custo Total</span>
+          <span class="font-mono">${formatUSD(amount)}</span>
+        </div>
+      `;
     }
   };
 
   if (input) {
     input.max = maxInvestAmount > 0 ? String(maxInvestAmount.toFixed(2)) : "0";
   }
+  
   if (investmentMaxHint) {
     if (hasWallet) {
-      investmentMaxHint.textContent = `Máximo permitido agora: ${formatUSD(maxInvestAmount)} (cota: ${formatUSD(maxOfferAmount)} | saldo: ${formatUSD(walletAvailable)}).`;
+      investmentMaxHint.innerHTML = `Disponível: <span class="text-emerald-400 font-mono">${formatUSD(maxInvestAmount)}</span>`;
     } else {
-      investmentMaxHint.textContent = `Máximo para esta oferta: ${formatUSD(maxInvestAmount)} (${formatPct(availablePct)} disponível).`;
+      investmentMaxHint.innerHTML = `Cota Máxima: <span class="text-emerald-400 font-mono">${formatUSD(maxOfferAmount)}</span>`;
     }
   }
 
@@ -294,7 +424,7 @@
     const normalized = clampToMax(amount);
     if (normalized !== amount && input) {
       input.value = normalized.toFixed(2);
-      window.showToast(`Valor ajustado para o máximo permitido (${formatUSD(normalized)}).`, "error");
+      window.showToast(`Valor ajustado para ${formatUSD(normalized)}.`, "error");
     }
   };
 
@@ -303,11 +433,12 @@
     normalizeInputToOfferLimit();
     updateEstimate();
   });
+  
   updateEstimate();
 
   confirmButton?.addEventListener("click", async () => {
-    if (isClosed) {
-      window.showToast("Esta oferta está encerrada para apoio.", "error");
+    if (!canSupport) {
+      window.showToast("Esta oferta não aceita mais apoios.", "error");
       return;
     }
     const amount = Number(input.value || 0);
@@ -337,8 +468,13 @@
         window.showToast(message, "error");
         return;
       }
-      window.showToast("Investimento confirmado!");
-      window.location.reload();
+      document.getElementById("successMessage")?.classList.remove("hidden");
+      confirmButton.disabled = true;
+      if (input) input.disabled = true;
+      
+      setTimeout(() => {
+        window.location.reload();
+      }, 3000);
     } catch (error) {
       window.handleNetworkError("Falha de conexão ao confirmar o apoio.");
     }
@@ -354,8 +490,8 @@
   const submitBidBtn = document.getElementById("submitBid");
 
   function openBidModal() {
-    if (isClosed) {
-      window.showToast("Esta oferta está encerrada para novas propostas.", "error");
+    if (!canSupport) {
+      window.showToast("Esta oferta não aceita mais propostas.", "error");
       return;
     }
     if (bidModal) {

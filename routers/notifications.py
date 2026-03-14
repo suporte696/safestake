@@ -26,7 +26,7 @@ def serialize_notification(item: Notification) -> dict:
 
 
 @router.get("/api/notifications")
-def list_notifications(request: Request, db: Session = Depends(get_db)):
+def list_notifications(request: Request, role: str | None = None, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
@@ -37,18 +37,27 @@ def list_notifications(request: Request, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
         logger.exception("Falha ao executar jobs na listagem de notificações")
+    
+    # Filtra por target_role: exibe notificações que são para o role atual (ou sem role definido)
     stmt = (
         select(Notification)
         .where(Notification.user_id == user.id)
-        .order_by(Notification.created_at.desc(), Notification.id.desc())
-        .limit(20)
     )
+    if role:
+        from sqlalchemy import or_
+        stmt = stmt.where(
+            or_(
+                Notification.target_role == role,
+                Notification.target_role.is_(None),
+            )
+        )
+    stmt = stmt.order_by(Notification.created_at.desc(), Notification.id.desc()).limit(20)
     items = db.execute(stmt).scalars().all()
     return {"notifications": [serialize_notification(item) for item in items]}
 
 
 @router.get("/api/notifications/unread-count")
-def unread_count(request: Request, db: Session = Depends(get_db)):
+def unread_count(request: Request, role: str | None = None, db: Session = Depends(get_db)):
     user = fetch_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Faça login para visualizar notificações.")
@@ -59,10 +68,19 @@ def unread_count(request: Request, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
         logger.exception("Falha ao executar jobs na contagem de notificações")
+    
     count_stmt = select(func.count(Notification.id)).where(
         Notification.user_id == user.id,
         Notification.read_at.is_(None),
     )
+    if role:
+        from sqlalchemy import or_
+        count_stmt = count_stmt.where(
+            or_(
+                Notification.target_role == role,
+                Notification.target_role.is_(None),
+            )
+        )
     count = db.execute(count_stmt).scalar_one()
     return {"unread": int(count)}
 

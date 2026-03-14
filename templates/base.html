@@ -10,6 +10,8 @@
       rel="stylesheet"
     />
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
       :root {
         color-scheme: dark;
@@ -34,25 +36,21 @@
     <header class="border-b border-white/10 sticky top-0 z-40 bg-[#050505]/95 backdrop-blur">
       <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
         <div class="flex items-center justify-between gap-4">
-          <div class="flex items-center gap-3 min-w-0">
+          <a href="/" class="flex items-center gap-3 min-w-0 hover:opacity-80 transition-opacity">
             <img
-              src="/static/img/safestake-text.png"
+              src="/static/img/safestake-01.svg"
               alt="SAFE STAKE"
-              class="h-7 sm:h-8 hidden sm:block flex-shrink-0"
+              class="h-10 sm:h-12 hidden sm:block flex-shrink-0"
             />
-          </div>
+          </a>
 
           <!-- Desktop nav -->
           <nav class="hidden lg:flex items-center gap-4 xl:gap-6 text-sm text-gray-300 flex-wrap justify-center">
-            {% if user and user.tipo == "admin" %}
             <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
-            {% elif user and user.tipo == "apoiador" %}
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/dashboard">Dashboard</a>
-            {% elif user and user.tipo == "jogador" %}
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
-            {% else %}
-            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/">Marketplace</a>
+            {% if user and (user.tipo == "apoiador" or request.url.path.startswith('/player')) %}
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/dashboard">Painel</a>
+            {% elif user and user.tipo == "admin" %}
+            <a class="hover:text-emerald-400 transition whitespace-nowrap" href="/admin/dashboard">Painel</a>
             {% endif %}
           </nav>
 
@@ -104,11 +102,14 @@
           </div>
           <div class="relative flex items-center gap-2">
             {% if user.profile_photo_url %}
-            <img
-              src="{{ user.profile_photo_url }}"
-              alt="Foto de perfil"
-              class="w-9 h-9 rounded-full border border-emerald-400/60 object-cover"
-            />
+            <div class="relative w-9 h-9 flex-shrink-0 overflow-hidden rounded-full">
+              <img 
+                src="{{ user.profile_photo_url }}" 
+                onerror="this.src='/static/img/avatar-fallback.svg'; this.onerror=null; this.classList.add('p-1.5');"
+                alt="User Photo" 
+                class="w-full h-full object-cover border border-emerald-400/20"
+              />
+            </div>
             {% else %}
             <div class="w-9 h-9 rounded-full border border-emerald-400/60 bg-emerald-400/10 flex items-center justify-center text-emerald-300 font-semibold text-sm">
               {{ user.nome[:1]|upper }}
@@ -117,38 +118,89 @@
             <button
               id="viewAsToggle"
               type="button"
-              class="px-3 sm:px-4 py-2 rounded-full border border-emerald-400 text-emerald-300 text-sm truncate max-w-[140px] sm:max-w-none inline-block cursor-pointer ml-2"
+              class="flex flex-col items-center justify-center py-1.5 px-5 rounded-full border border-emerald-400 text-emerald-300 transition-all hover:bg-emerald-400/5 group"
             >
-              Olá, {{ user.nome }}
+              <span class="text-xs font-semibold leading-tight">Olá, {{ user.nome }}</span>
+              <span class="text-[9px] uppercase tracking-widest font-bold opacity-60 group-hover:opacity-100 transition-opacity">
+                {% if request.url.path.startswith('/admin') %}Admin
+                {% elif request.url.path.startswith('/player') %}Jogador
+                {% elif user.tipo == 'admin' %}Admin
+                {% else %}Apoiador{% endif %}
+              </span>
             </button>
+
             {% if user.tipo == "admin" %}
+            <!-- Admin Guidance Tooltip -->
+            <div
+              id="adminOnboardingTooltip"
+              class="hidden absolute top-full right-0 mt-4 w-72 bg-black border border-emerald-500/50 rounded-2xl p-4 shadow-[0_0_30px_rgba(16,185,129,0.15)] z-[60] animate-bounce-subtle"
+            >
+              <!-- Arrow -->
+              <div class="absolute -top-2 right-12 w-4 h-4 bg-black border-t border-l border-emerald-500/50 transform rotate-45"></div>
+              
+              <div class="flex items-start gap-3">
+                <div class="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                  <i data-lucide="info" class="w-4 h-4 text-emerald-400"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-xs text-emerald-50 text-balance leading-relaxed">
+                    <strong>Olá, {{ user.nome }}</strong>, clicando aqui você pode alternar sua conta entre <strong>Admin</strong> e <strong>Jogador</strong>!
+                  </p>
+                </div>
+                <button
+                  id="closeOnboarding"
+                  class="p-1 hover:bg-white/10 rounded-lg transition-colors text-gray-400 hover:text-white"
+                >
+                  <i data-lucide="x" class="w-3 h-3"></i>
+                </button>
+              </div>
+            </div>
+
+            <style>
+              @keyframes bounce-subtle {
+                0%, 100% { transform: translateY(0); }
+                50% { transform: translateY(-4px); }
+              }
+              .animate-bounce-subtle {
+                animation: bounce-subtle 3s ease-in-out infinite;
+              }
+            </style>
+            {% endif %}
+            {% if user.tipo in ["admin", "apoiador"] %}
             <div
               id="viewAsMenu"
-              class="hidden absolute right-0 mt-64 w-56 bg-black border border-white/10 rounded-xl shadow-xl z-50"
+              class="absolute right-0 top-full mt-2 w-56 bg-black border border-white/10 rounded-xl shadow-2xl z-50 transition-all duration-200 transform opacity-0 scale-95 pointer-events-none origin-top-right"
             >
-              <div class="px-3 py-2 border-b border-white/10">
+              {% if user.tipo == "admin" %}
+              <div class="px-4 py-3 border-b border-white/10">
                 <p class="text-[10px] uppercase tracking-widest text-gray-500 font-title">Selecionar perfil</p>
               </div>
               <div class="py-1">
                 <a
                   href="/view-as/admin"
-                  class="block px-3 py-2 text-sm font-semibold {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold transition-colors {% if request.url.path.startswith('/admin') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
                 >
+                  <i data-lucide="shield-check" class="w-4 h-4"></i>
                   Admin
                 </a>
                 <a
                   href="/view-as/player"
-                  class="block px-3 py-2 text-sm font-semibold {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
+                  class="flex items-center gap-3 px-4 py-2.5 text-sm font-semibold transition-colors {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black{% else %}text-gray-300 hover:bg-white/5{% endif %}"
                 >
+                  <i data-lucide="user" class="w-4 h-4"></i>
                   Jogador
                 </a>
               </div>
-              <div class="mt-2 pt-2 border-t border-white/10">
+              <div class="border-t border-white/10">
+              {% else %}
+              <div class="py-1">
+              {% endif %}
                 <a
                   href="/logout"
-                  class="block px-3 py-2 text-sm font-semibold text-red-300 hover:bg-red-500/10 hover:text-red-200"
+                  class="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-300 hover:bg-red-500/10 hover:text-red-200 transition-colors"
                 >
-                  Sair
+                  <i data-lucide="log-out" class="w-4 h-4"></i>
+                  Sair da conta
                 </a>
               </div>
             </div>
@@ -183,14 +235,14 @@
               <a href="/player/offers" class="flex-1 py-2.5 rounded-lg text-center font-semibold border {% if request.url.path.startswith('/player') %}bg-emerald-400 text-black border-emerald-400{% else %}border-white/20 text-gray-300{% endif %}">Jogador</a>
             </div>
           </div>
+          {% endif %}
+
           <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
-          {% elif user and user.tipo == "apoiador" %}
-          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
-          <a href="/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Dashboard</a>
-          {% elif user and user.tipo == "jogador" %}
-          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
-          {% else %}
-          <a href="/" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Marketplace</a>
+
+          {% if user and (user.tipo == "apoiador" or request.url.path.startswith('/player')) %}
+          <a href="/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel</a>
+          {% elif user and user.tipo == "admin" %}
+          <a href="/admin/dashboard" class="block py-2.5 px-3 rounded-lg hover:bg-white/5 text-gray-300">Painel</a>
           {% endif %}
         </nav>
       </div>
@@ -207,7 +259,7 @@
     <footer class="border-t border-white/10 py-8 mt-auto">
       <div class="max-w-6xl mx-auto px-6 text-sm text-gray-400 flex flex-col md:flex-row items-center justify-between gap-4">
         <p>SAFE STAKE © 2026. Todos os direitos reservados.</p>
-        <p class="text-emerald-400 font-title text-xs">DARK · BOLD · HIGH-TECH</p>
+        <p class="text-emerald-400 font-title text-xs">As Melhores Partidas e Players</p>
       </div>
     </footer>
     {% endif %}
@@ -315,16 +367,49 @@
 
         toggle.addEventListener("click", function(event) {
           event.stopPropagation();
-          const isOpen = !menu.classList.contains("hidden");
-          menu.classList.toggle("hidden", isOpen);
+          const isOpen = menu.classList.contains("opacity-100");
+          if (isOpen) {
+            menu.classList.add("opacity-0", "scale-95", "pointer-events-none");
+            menu.classList.remove("opacity-100", "scale-100", "pointer-events-auto");
+          } else {
+            menu.classList.remove("opacity-0", "scale-95", "pointer-events-none");
+            menu.classList.add("opacity-100", "scale-100", "pointer-events-auto");
+          }
         });
 
         document.addEventListener("click", function(event) {
-          if (!menu || menu.classList.contains("hidden")) return;
+          if (!menu.classList.contains("opacity-100")) return;
           if (!menu.contains(event.target) && !toggle.contains(event.target)) {
-            menu.classList.add("hidden");
+            menu.classList.add("opacity-0", "scale-95", "pointer-events-none");
+            menu.classList.remove("opacity-100", "scale-100", "pointer-events-auto");
           }
         });
+
+        // Tooltip logic for Admin
+        const tooltip = document.getElementById("adminOnboardingTooltip");
+        const closeBtn = document.getElementById("closeOnboarding");
+        
+        if (tooltip && closeBtn) {
+          const hasSeen = sessionStorage.getItem("admin_onboarding_seen");
+          if (!hasSeen) {
+            setTimeout(() => {
+              tooltip.classList.remove("hidden");
+            }, 1000); // Delay for a better feel
+          }
+
+          const dismiss = () => {
+            tooltip.classList.add("hidden");
+            sessionStorage.setItem("admin_onboarding_seen", "true");
+          };
+
+          closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            dismiss();
+          });
+
+          // Also dismiss on toggle click
+          toggle.addEventListener("click", dismiss);
+        }
       })();
     </script>
 
@@ -359,30 +444,37 @@
 
     {% if user %}
     <script>
-      const bell = document.getElementById("notificationBell");
-      const panel = document.getElementById("notificationPanel");
-      const badge = document.getElementById("notificationBadge");
-      const list = document.getElementById("notificationList");
-      const refreshBtn = document.getElementById("refreshNotifications");
+      // Detecta o role ativo com base na URL
+      const _currentPath = window.location.pathname;
+      const _activeRole = _currentPath.startsWith('/admin') ? 'admin'
+                        : _currentPath.startsWith('/player') ? 'jogador'
+                        : '{{ "admin" if user.tipo == "admin" and request.url.path.startswith("/admin") else ("jogador" if request.url.path.startswith("/player") else "") }}';
+
+      const bell = document.getElementById('notificationBell');
+      const panel = document.getElementById('notificationPanel');
+      const badge = document.getElementById('notificationBadge');
+      const list = document.getElementById('notificationList');
+      const refreshBtn = document.getElementById('refreshNotifications');
 
       async function fetchUnreadCount() {
         try {
-          const res = await fetch("/api/notifications/unread-count");
+          const roleParam = _activeRole ? `?role=${_activeRole}` : '';
+          const res = await fetch(`/api/notifications/unread-count${roleParam}`);
           if (!res.ok) return;
           const data = await res.json();
           const unread = Number(data.unread || 0);
           if (unread > 0) {
-            badge.textContent = unread > 99 ? "99+" : String(unread);
-            badge.classList.remove("hidden");
+            badge.textContent = unread > 99 ? '99+' : String(unread);
+            badge.classList.remove('hidden');
           } else {
-            badge.classList.add("hidden");
+            badge.classList.add('hidden');
           }
         } catch (_err) {}
       }
 
       async function markAsRead(id) {
         try {
-          await fetch(`/api/notifications/${id}/read`, { method: "POST" });
+          await fetch(`/api/notifications/${id}/read`, { method: 'POST' });
         } catch (_err) {}
       }
 
@@ -390,50 +482,59 @@
         if (!list) return;
         list.innerHTML = `<div class="text-xs text-gray-500 px-2 py-2">Carregando...</div>`;
         try {
-          const res = await fetch("/api/notifications");
+          const roleParam = _activeRole ? `?role=${_activeRole}` : '';
+          const res = await fetch(`/api/notifications${roleParam}`);
           if (!res.ok) {
-            list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Falha ao carregar notificações.</div>`;
+            list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Falha ao carregar notifica&ccedil;&otilde;es.</div>`;
             return;
           }
           const data = await res.json();
           const items = data.notifications || [];
           if (!items.length) {
-            list.innerHTML = `<div class="text-xs text-gray-500 px-2 py-2">Sem notificações.</div>`;
+            list.innerHTML = `<div class="text-xs text-gray-500 px-2 py-2">Sem notifica&ccedil;&otilde;es.</div>`;
             return;
           }
 
           function resultNotificationStyle(type) {
-            if (type === "RESULT_APPROVED")
-              return { border: "border-l-4 border-l-emerald-500", icon: "✓", iconClass: "text-emerald-400" };
-            if (type === "RESULT_REJECTED")
-              return { border: "border-l-4 border-l-red-500", icon: "✗", iconClass: "text-red-400" };
-            if (type === "RESULT_SUBMITTED")
-              return { border: "border-l-4 border-l-amber-500", icon: "!", iconClass: "text-amber-400" };
-            return { border: "", icon: "", iconClass: "" };
+            if (type === 'RESULT_APPROVED')
+              return { border: 'border-l-4 border-l-emerald-500', icon: '✓', iconClass: 'text-emerald-400' };
+            if (type === 'RESULT_REJECTED')
+              return { border: 'border-l-4 border-l-red-500', icon: '✗', iconClass: 'text-red-400' };
+            if (type === 'RESULT_SUBMITTED')
+              return { border: 'border-l-4 border-l-amber-500', icon: '!', iconClass: 'text-amber-400' };
+            if (type === 'RESULT_DEADLINE_REMINDER' || type === 'RESULT_DEADLINE_BLOCK')
+              return { border: 'border-l-4 border-l-orange-500', icon: '⏰', iconClass: 'text-orange-400' };
+            if (type === 'WITHDRAWAL_APPROVED')
+              return { border: 'border-l-4 border-l-emerald-500', icon: '$', iconClass: 'text-emerald-400' };
+            if (type === 'WITHDRAWAL_REJECTED')
+              return { border: 'border-l-4 border-l-red-500', icon: '$', iconClass: 'text-red-400' };
+            if (type === 'WITHDRAWAL_REQUESTED')
+              return { border: 'border-l-4 border-l-blue-500', icon: '$', iconClass: 'text-blue-400' };
+            return { border: '', icon: '', iconClass: '' };
           }
 
-          list.innerHTML = "";
+          list.innerHTML = '';
           items.forEach((item) => {
             const style = resultNotificationStyle(item.type);
-            const card = document.createElement("button");
-            card.type = "button";
+            const card = document.createElement('button');
+            card.type = 'button';
             card.className =
-              "w-full text-left p-3 rounded-lg border border-white/10 hover:border-emerald-400 transition bg-[#0b0b0b] " + (style.border || "");
-            const created = item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-";
+              'w-full text-left p-3 rounded-lg border border-white/10 hover:border-emerald-400 transition bg-[#0b0b0b] ' + (style.border || '');
+            const created = item.created_at ? new Date(item.created_at).toLocaleString('pt-BR') : '-';
             const iconHtml = style.icon
               ? `<span class="flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${style.iconClass}">${style.icon}</span>`
-              : "";
+              : '';
             card.innerHTML = `
               <div class="flex items-center justify-between gap-2">
                 <div class="flex items-center gap-2 min-w-0">
                   ${iconHtml}
-                  <p class="text-sm font-semibold truncate ${item.read ? "text-white" : "text-emerald-300"}">${item.title}</p>
+                  <p class="text-sm font-semibold truncate ${item.read ? 'text-white' : 'text-emerald-300'}">${item.title}</p>
                 </div>
                 <span class="text-[10px] text-gray-500 flex-shrink-0">${created}</span>
               </div>
               <p class="text-xs text-gray-300 mt-1">${item.message}</p>
             `;
-            card.addEventListener("click", async () => {
+            card.addEventListener('click', async () => {
               if (!item.read) {
                 await markAsRead(item.id);
               }
@@ -447,32 +548,36 @@
             list.appendChild(card);
           });
         } catch (_err) {
-          list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Erro inesperado ao carregar notificações.</div>`;
+          list.innerHTML = `<div class="text-xs text-red-300 px-2 py-2">Erro inesperado ao carregar notifica&ccedil;&otilde;es.</div>`;
         }
       }
 
-      bell?.addEventListener("click", async () => {
-        panel?.classList.toggle("hidden");
-        if (panel && !panel.classList.contains("hidden")) {
+      bell?.addEventListener('click', async () => {
+        panel?.classList.toggle('hidden');
+        if (panel && !panel.classList.contains('hidden')) {
           await fetchNotifications();
           await fetchUnreadCount();
         }
       });
 
-      refreshBtn?.addEventListener("click", async () => {
+      refreshBtn?.addEventListener('click', async () => {
         await fetchNotifications();
         await fetchUnreadCount();
       });
 
-      document.addEventListener("click", (event) => {
+      document.addEventListener('click', (event) => {
         if (!panel || !bell) return;
         if (!panel.contains(event.target) && !bell.contains(event.target)) {
-          panel.classList.add("hidden");
+          panel.classList.add('hidden');
         }
       });
 
       fetchUnreadCount();
     </script>
     {% endif %}
+    <!-- Initialize Lucide Icons -->
+    <script>
+      lucide.createIcons();
+    </script>
   </body>
 </html>

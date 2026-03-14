@@ -11,7 +11,7 @@
       class="h-6 mx-auto"
     />
     <h1 class="font-title text-2xl uppercase">Criar Conta</h1>
-    <p class="text-gray-400 text-sm">Cadastre-se para entrar no ecossistema Safe Stake.</p>
+    <p class="text-gray-400 text-sm">Cadastre-se para apoiar nossos players.</p>
   </div>
 
   {% if error %}
@@ -21,10 +21,6 @@
   {% endif %}
 
   <form class="space-y-4" method="post" action="/register">
-    <div class="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-200">
-      Todas as contas novas são cadastradas como <span class="font-semibold">APOIADOR</span>.
-    </div>
-
     <div class="space-y-2">
       <label class="text-xs text-gray-400">Nome completo</label>
       <input
@@ -49,49 +45,85 @@
       />
     </div>
 
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Senha</label>
-      <input
-        type="password"
-        name="senha"
-        id="senha"
-        placeholder="Mínimo 8, com letra e número"
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        required
-      />
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Senha</label>
+        <div class="relative">
+          <input
+            type="password"
+            name="senha"
+            id="senha"
+            placeholder="Mínimo 8, com letra e número"
+            class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 pr-12"
+            required
+          />
+          <button type="button" class="absolute inset-y-0 right-3 flex items-center justify-center w-8 text-gray-500 hover:text-emerald-400 toggle-password" data-target="senha">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+          </button>
+        </div>
+      </div>
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Confirmar senha</label>
+        <div class="relative">
+          <input
+            type="password"
+            name="confirmar_senha"
+            id="confirmar_senha"
+            placeholder="Digite novamente"
+            class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 pr-12"
+            required
+          />
+          <button type="button" class="absolute inset-y-0 right-3 flex items-center justify-center w-8 text-gray-500 hover:text-emerald-400 toggle-password" data-target="confirmar_senha">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Tipo de chave PIX</label>
-      <select id="pix_key_type" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400">
-        <option value="cpf">CPF</option>
-        <option value="email">E-mail</option>
-        <option value="telefone">Telefone</option>
-      </select>
-    </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Chave Pix (obrigatória para recebimento de lucros)</label>
-      <input
-        type="text"
-        id="pix_key_input"
-        name="pix_key"
-        value="{{ form_data.pix_key or '' }}"
-        placeholder="000.000.000-00"
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        required
-        maxlength="14"
-        autocomplete="off"
-      />
-    </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Confirmar senha</label>
-      <input
-        type="password"
-        name="confirmar_senha"
-        id="confirmar_senha"
-        placeholder="Digite a senha novamente"
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        required
-      />
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="space-y-2">
+        <div class="flex items-center gap-1">
+          <label class="text-xs text-gray-400">Tipo de chave PIX</label>
+          <div class="group relative flex items-center">
+            <div class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/5 cursor-help transition-colors text-gray-500 hover:text-emerald-400">
+              <i data-lucide="help-circle" class="w-4 h-4"></i>
+            </div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-900 text-[10px] text-gray-300 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+              Sua chave PIX será usada para que possa solicitar saques na plataforma
+            </div>
+          </div>
+        </div>
+        <select id="pix_key_type" name="pix_key_type" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400" required>
+          <option value="" disabled {% if not form_data.pix_key_type %}selected{% endif %}>Selecione o tipo</option>
+          <option value="cpf" {% if form_data.pix_key_type == 'cpf' %}selected{% endif %}>CPF</option>
+          <option value="email" {% if form_data.pix_key_type == 'email' %}selected{% endif %}>E-mail</option>
+          <option value="telefone" {% if form_data.pix_key_type == 'telefone' %}selected{% endif %}>Telefone</option>
+        </select>
+      </div>
+      <div class="space-y-2">
+        <div class="flex items-center gap-1">
+          <label class="text-xs text-gray-400">Chave Pix</label>
+          <div class="group relative flex items-center">
+            <div class="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/5 cursor-help transition-colors text-gray-500 hover:text-emerald-400">
+              <i data-lucide="help-circle" class="w-4 h-4"></i>
+            </div>
+            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-gray-900 text-[10px] text-gray-300 rounded-lg border border-white/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+              Sua chave PIX será usada para que possa solicitar saques na plataforma
+            </div>
+          </div>
+        </div>
+        <input
+          type="text"
+          id="pix_key_input"
+          name="pix_key"
+          value="{{ form_data.pix_key or '' }}"
+          placeholder="000.000.000-00"
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+          required
+          maxlength="14"
+          autocomplete="off"
+        />
+      </div>
     </div>
 
     <input type="hidden" name="tipo" value="apoiador" />
@@ -123,6 +155,19 @@
       }
     });
   }
+
+  document.querySelectorAll(".toggle-password").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.getAttribute("data-target");
+      const input = document.getElementById(targetId);
+      if (!input) return;
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      btn.innerHTML = isPassword
+        ? `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.822 7.822L21 21m-2.208-2.208-4.195-4.195m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>`
+        : `<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>`;
+    });
+  });
 
   (function () {
     const typeSelect = document.getElementById("pix_key_type");

@@ -17,3 +17,12 @@ htmlcov/
 .vscode/
 .DS_Store
 *.sqlite3
+result_limpo.txt
+result_utf8.txt
+check_*.sh
+check_*.py
+generate_report.py
+md_to_pdf.py
+*limbo.txt
+diff_*.txt
+status.txt

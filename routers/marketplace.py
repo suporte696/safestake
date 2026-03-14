@@ -26,7 +26,7 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-DEFAULT_AVATAR = "/static/img/safestake-icon.png"
+DEFAULT_AVATAR = "/static/img/avatar-fallback.svg"
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
@@ -82,12 +82,36 @@ def serialize_offer(offer: StakeOffer) -> dict:
     if target_buyin_amount > 0:
         progress_sale_pct = min(Decimal("100"), (sold_buyin_amount / target_buyin_amount) * Decimal("100"))
     is_closed = _is_offer_closed_by_start_time(offer)
+    
+    # Lógica de Status Centralizada
+    status_label = "Ativa"
+    status_class = "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+    
+    if tournament and tournament.status == "Finalizado":
+        status_label = "Finalizada"
+        status_class = "bg-gray-500/10 border-gray-500/20 text-gray-400"
+    elif tournament and tournament.status == "Jogando":
+        status_label = "Iniciada"
+        status_class = "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+    elif is_closed:
+        status_label = "Encerrada"
+        status_class = "bg-red-500/10 border-red-500/20 text-red-400"
+    elif progress_sale_pct >= 100:
+        status_label = "Meta Atingida"
+        status_class = "bg-amber-500/10 border-amber-500/20 text-amber-400"
+
     can_support = offer.escrow_status == "COLLECTING" and available_pct > 0 and not is_closed
     start_time = tournament.data_hora if tournament else None
+    
+    avatar_url = player.profile_photo_url if player and player.profile_photo_url else DEFAULT_AVATAR
+    if avatar_url and not avatar_url.startswith("/") and not avatar_url.startswith("http"):
+        # Provavelmente caminho legado apenas com o nome do arquivo
+        avatar_url = f"/static/uploads/profile/{avatar_url}"
+    
     return {
         "id": offer.id,
         "player_name": player.nome if player else "Player",
-        "player_avatar": DEFAULT_AVATAR,
+        "player_avatar": avatar_url,
         "tournament_name": tournament.nome if tournament else "Torneio",
         "room": (
             tournament.plataforma
@@ -105,6 +129,8 @@ def serialize_offer(offer: StakeOffer) -> dict:
         "start_time": start_time,
         "is_closed": is_closed,
         "can_support": can_support,
+        "status_label": status_label,
+        "status_class": status_class,
     }
 
 
@@ -127,7 +153,7 @@ def marketplace(request: Request, db: Session = Depends(get_db)):
         select(StakeOffer)
         .join(Tournament, StakeOffer.tournament_id == Tournament.id)
         .where(Tournament.status.in_(("Aberto", "Jogando")))
-        .where(StakeOffer.escrow_status == "COLLECTING")
+        .where(StakeOffer.escrow_status.in_(("COLLECTING", "COMPLETE")))
         .options(joinedload(StakeOffer.player), joinedload(StakeOffer.tournament))
         .order_by(StakeOffer.id.desc())
     )
@@ -160,6 +186,24 @@ def stake_detail(request: Request, offer_id: int, db: Session = Depends(get_db))
     offer = db.execute(stmt).scalars().first()
     if not offer:
         raise HTTPException(status_code=404, detail="Oferta não encontrada.")
+    investment_data = None
+    if user:
+        inv_stmt = select(Investment).where(Investment.offer_id == offer_id, Investment.backer_id == user.id)
+        existing_inv = db.execute(inv_stmt).scalars().first()
+        if existing_inv:
+            tournament = offer.tournament
+            is_editable = (
+                tournament.status == "Aberto" and 
+                not _is_offer_closed_by_start_time(offer) and 
+                offer.escrow_status in ("COLLECTING", "COMPLETE")
+            )
+            investment_data = {
+                "id": existing_inv.id,
+                "amount": existing_inv.valor_investido,
+                "pct": existing_inv.pct_comprada,
+                "is_editable": is_editable
+            }
+
     return templates.TemplateResponse(
         "stake_detail.html",
         {
@@ -167,6 +211,7 @@ def stake_detail(request: Request, offer_id: int, db: Session = Depends(get_db))
             "offer": serialize_offer(offer),
             "user": user,
             "wallet": wallet_summary,
+            "user_investment": investment_data,
         },
     )
 
@@ -254,20 +299,45 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         tournament = offer.tournament if offer else None
         player = offer.player if offer else None
         valor_investido = Decimal(str(investment.valor_investido or 0))
-        lucro_recebido = Decimal(str(investment.lucro_recebido or 0))
+        lucro_bruto = Decimal(str(investment.lucro_recebido or 0))
+        # Quando o torneio está finalizado e o pagamento foi efetuado, "resultado" é o total líquido
+        # recebido de volta (capital investido + lucro), equivalente ao que o admin chama de "Líquido".
+        # Se o payout ainda não aconteceu (PENDING), mostramos apenas o lucro estimado.
+        if investment.payout_status == "PAID":
+            resultado = q_money(valor_investido + lucro_bruto)
+        else:
+            resultado = lucro_bruto
         total_investido += valor_investido
-        total_recebido += lucro_recebido
+        total_recebido += resultado if investment.payout_status == "PAID" else Decimal("0")
         status_label = tournament.status if tournament else "Aberto"
         if offer and offer.escrow_status == "REFUNDED":
             status_label = "Cancelado"
+        
+        is_editable = False
+        if offer and tournament:
+            is_editable = (
+                tournament.status == "Aberto" and 
+                not _is_offer_closed_by_start_time(offer) and 
+                offer.escrow_status in ("COLLECTING", "COMPLETE")
+            )
+
         stakes.append(
             {
+                "id": investment.id,
+                "offer_id": offer.id if offer else None,
                 "tournament": tournament.nome if tournament else "Torneio",
                 "player": player.nome if player else "Player",
                 "valor": valor_investido,
                 "pct": investment.pct_comprada,
-                "resultado": lucro_recebido,
+                "resultado": resultado,
                 "status": status_label,
+                "is_editable": is_editable,
+                "buyin": float(tournament.buyin) if tournament else 0,
+                "markup": float(offer.markup) if offer else 1.0,
+                "total_disponivel_pct": float(offer.total_disponivel_pct) if offer else 100,
+                "vendido_pct": float(offer.vendido_pct) if offer else 0,
+                "status_label": serialize_offer(investment.offer)["status_label"],
+                "status_class": serialize_offer(investment.offer)["status_class"],
             }
         )
 
@@ -325,6 +395,13 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 
     saldo_pendente = Decimal("0")
     if user and user.tipo == "apoiador":
+        # Só mostra saldo pendente quando o jogador já submeteu o resultado
+        # mas o admin ainda não aprovou (MatchResult em PENDING ou UNDER_REVIEW).
+        pending_result_tournament_ids_subq = (
+            select(MatchResult.tournament_id)
+            .where(MatchResult.review_status.in_(["PENDING", "UNDER_REVIEW"]))
+            .scalar_subquery()
+        )
         pendente_row = db.execute(
             select(
                 func.coalesce(
@@ -333,9 +410,12 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
                     ),
                     0,
                 )
-            ).where(
+            )
+            .join(StakeOffer, Investment.offer_id == StakeOffer.id)
+            .where(
                 Investment.backer_id == user.id,
                 Investment.payout_status == "PENDING",
+                StakeOffer.tournament_id.in_(pending_result_tournament_ids_subq),
             )
         ).scalar_one()
         saldo_pendente = q_money(Decimal(str(pendente_row or 0)))
@@ -374,6 +454,7 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
     if user.wallet:
         wallet_summary = {
             "saldo_disponivel": user.wallet.saldo_disponivel,
+            "saldo_bloqueado": getattr(user.wallet, "saldo_bloqueado", Decimal("0")) or Decimal("0"),
             "saldo_em_jogo": user.wallet.saldo_em_jogo,
         }
     stmt = (
@@ -384,14 +465,60 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
         .order_by(StakeOffer.id.desc())
     )
     offers = db.execute(stmt).unique().scalars().all()
-    tournament_ids_jogando = [o.tournament_id for o in offers if o.tournament and o.tournament.status == "Jogando"]
+    relevant_statuses = ("Jogando", "Finalizado")
+    tournament_ids_needs_check = [o.tournament_id for o in offers if o.tournament and o.tournament.status in relevant_statuses]
+    
     has_result_ids: set[int] = set()
-    if tournament_ids_jogando:
-        result_tids = db.execute(
-            select(MatchResult.tournament_id).where(MatchResult.tournament_id.in_(tournament_ids_jogando))
+    result_map: dict[int, MatchResult] = {}
+    if tournament_ids_needs_check:
+        results = db.execute(
+            select(MatchResult).where(
+                MatchResult.tournament_id.in_(tournament_ids_needs_check),
+                MatchResult.player_id == user.id
+            )
         ).scalars().all()
-        has_result_ids = {int(tid) for tid in result_tids if tid is not None}
-    awaiting_result_count = len([tid for tid in tournament_ids_jogando if tid not in has_result_ids])
+        result_map = {int(r.tournament_id): r for r in results if r.tournament_id is not None}
+        has_result_ids = set(result_map.keys())
+    
+    awaiting_result_count = len([tid for tid in tournament_ids_needs_check if tid not in has_result_ids])
+    
+    # Injetar o percentual de progresso de venda em cada oferta para consistência com o Marketplace
+    for o in offers:
+        total_pct = Decimal(str(o.total_disponivel_pct or 0))
+        sold_pct = Decimal(str(o.vendido_pct or 0))
+        if total_pct > 0:
+            o.progress_sale_pct = min(Decimal("100"), (sold_pct / total_pct) * Decimal("100"))
+        else:
+            o.progress_sale_pct = Decimal("0")
+
+    pix_transactions = []
+    if user:
+        stmt_tx = (
+            select(PixTransaction)
+            .where(PixTransaction.user_id == user.id)
+            .order_by(PixTransaction.created_at.desc(), PixTransaction.id.desc())
+            .limit(10)
+        )
+        raw_txs = db.execute(stmt_tx).scalars().all()
+        for tx in raw_txs:
+            dt = tx.created_at
+            if not dt:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            tx.created_at_local = dt.astimezone(LOCAL_TZ)
+        pix_transactions = raw_txs
+
+    withdrawal_requests = []
+    if user:
+        stmt_withdrawals = (
+            select(WithdrawalRequest)
+            .where(WithdrawalRequest.user_id == user.id)
+            .order_by(WithdrawalRequest.created_at.desc(), WithdrawalRequest.id.desc())
+            .limit(10)
+        )
+        withdrawal_requests = db.execute(stmt_withdrawals).scalars().all()
+
     return templates.TemplateResponse(
         "player_offers.html",
         {
@@ -400,8 +527,11 @@ def player_offers(request: Request, db: Session = Depends(get_db)):
             "offers": offers,
             "wallet": wallet_summary,
             "supported_rooms": sorted(SUPPORTED_ROOMS),
-        "awaiting_result_count": awaiting_result_count,
-        "has_result_ids": has_result_ids,
+            "awaiting_result_count": awaiting_result_count,
+            "has_result_ids": has_result_ids,
+            "result_map": result_map,
+            "pix_transactions": pix_transactions,
+            "withdrawal_requests": withdrawal_requests,
             "requires_auth": True,
         },
     )
@@ -465,23 +595,18 @@ def update_player_offer(
     tournament = db.get(Tournament, offer.tournament_id)
     if not tournament:
         raise HTTPException(status_code=404, detail="Torneio da oferta não encontrado.")
-    if tournament.status == "Finalizado":
-        raise HTTPException(status_code=400, detail="Este torneio já foi finalizado e não pode mais ser editado.")
-    if _is_offer_closed_by_start_time(offer):
-        raise HTTPException(status_code=400, detail="Oferta encerrada, não pode mais ser editada.")
+    if tournament.status != "Aberto":
+        raise HTTPException(status_code=400, detail="Somente torneios em aberto podem ser editados.")
 
-    vendido_pct = Decimal("0")
     has_investments = db.execute(select(Investment.id).where(Investment.offer_id == offer.id)).scalars().first()
     if has_investments:
-        sum_pct = db.execute(
-            select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
-        ).scalar_one()
-        vendido_pct = q_money(Decimal(str(sum_pct or 0)))
-        if total_pct_value < vendido_pct:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Total disponível (%) não pode ser menor que o percentual já vendido ({vendido_pct}%).",
-            )
+        raise HTTPException(
+            status_code=400,
+            detail="Não é possível editar a oferta pois já existem investidores vinculados.",
+        )
+
+    if _is_offer_closed_by_start_time(offer):
+        raise HTTPException(status_code=400, detail="Oferta encerrada pelo horário, não pode mais ser editada.")
 
     tournament.nome = tournament_name.strip()
     tournament.sharkscope_id = normalized_room
@@ -491,7 +616,7 @@ def update_player_offer(
 
     offer.markup = markup_value
     offer.total_disponivel_pct = total_pct_value
-    offer.vendido_pct = vendido_pct
+    offer.vendido_pct = Decimal("0")
 
     total_required = q_money(((buyin_value * markup_value) * total_pct_value) / Decimal("100"))
     escrow = db.execute(select(TournamentEscrow).where(TournamentEscrow.offer_id == offer.id).with_for_update()).scalars().first()
@@ -734,8 +859,107 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         lucro_recebido=Decimal("0"),
     )
     db.add(investment)
-    db.flush()
+    db.flush()  # Adicionado para forçar que o registro vá para o banco e sync_offer_escrow somme 100% da cotação
     sync_offer_escrow(db, offer)
+    db.commit()
+    return {"success": True}
+
+
+@router.post("/api/invest/update")
+async def invest_update(request: Request, db: Session = Depends(get_db)):
+    payload = await request.json()
+    investment_id = payload.get("investment_id")
+    new_amount_raw = payload.get("amount")
+
+    if investment_id is None or new_amount_raw is None:
+        raise HTTPException(status_code=400, detail="Dados inválidos.")
+
+    try:
+        new_amount = Decimal(str(new_amount_raw))
+    except InvalidOperation:
+        raise HTTPException(status_code=400, detail="Valor inválido.")
+    if new_amount <= 0:
+        raise HTTPException(status_code=400, detail="O valor deve ser maior que zero.")
+
+    user = fetch_current_user(request, db)
+    if not user:
+        raise HTTPException(status_code=401, detail="Faça login.")
+    ensure_user_not_blocked(user)
+
+    inv_stmt = (
+        select(Investment)
+        .where(Investment.id == investment_id, Investment.backer_id == user.id)
+        .options(joinedload(Investment.offer).joinedload(StakeOffer.tournament))
+        .with_for_update(of=Investment)
+    )
+    investment = db.execute(inv_stmt).scalars().first()
+    if not investment:
+        raise HTTPException(status_code=404, detail="Apoio não encontrado.")
+
+    offer = investment.offer
+    tournament = offer.tournament
+    
+    can_edit = (
+        tournament.status == "Aberto" and 
+        not _is_offer_closed_by_start_time(offer) and 
+        offer.escrow_status in ("COLLECTING", "COMPLETE")
+    )
+    
+    if not can_edit:
+        raise HTTPException(status_code=400, detail="Esta oferta não permite mais edições (partida já iniciada ou meta já confirmada).")
+
+    # Recalcula percentual
+    buyin = Decimal(str(tournament.buyin))
+    markup = Decimal(str(offer.markup))
+    if buyin <= 0 or markup <= 0:
+        raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
+
+    new_share_pct = q_money((new_amount / (buyin * markup)) * Decimal("100"))
+    
+    # Verifica disponibilidade (meta total)
+    sum_sold = db.execute(
+        select(func.coalesce(func.sum(Investment.pct_comprada), 0))
+        .where(Investment.offer_id == offer.id, Investment.id != investment.id)
+    ).scalar_one()
+    others_sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    total_pct = Decimal(str(offer.total_disponivel_pct))
+    
+    if others_sold_pct + new_share_pct > total_pct + Decimal("0.001"):
+        avail_pct = max(Decimal("0"), total_pct - others_sold_pct)
+        # Calcula quanto em dólar isso representa
+        max_usd = q_money((avail_pct / Decimal("100")) * (buyin * markup))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Não há cota suficiente. Máximo permitido: US$ {float(max_usd):.2f} ({float(avail_pct):.1f}%).",
+        )
+
+    # Ajuste de carteira
+    diff = new_amount - investment.valor_investido
+    wallet = ensure_wallet_for_user(db, user.id, with_lock=True)
+    if diff > 0 and wallet.saldo_disponivel < diff:
+        raise HTTPException(status_code=400, detail="Saldo insuficiente para aumentar o apoio.")
+
+    wallet.saldo_disponivel -= diff
+    wallet.saldo_em_jogo += diff
+    
+    player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
+    player_wallet.saldo_em_jogo += diff
+
+    # Atualiza investimento e oferta
+    investment.valor_investido = new_amount
+    investment.pct_comprada = new_share_pct
+
+    # Sincroniza vendido_pct na oferta
+    total_sold_pct = db.execute(
+        select(func.coalesce(func.sum(Investment.pct_comprada), 0))
+        .where(Investment.offer_id == offer.id)
+    ).scalar_one()
+    offer.vendido_pct = q_money(Decimal(str(total_sold_pct or 0)))
+
+    # Sincroniza escrow
+    from routers.escrow import sync_offer_escrow
+    sync_offer_escrow(db, offer)
+
     db.commit()
     return {"success": True}
 

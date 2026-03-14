@@ -19,17 +19,75 @@
     Você informou que não vai jogar. Os aportes foram estornados aos apoiadores.
   </div>
   {% endif %}
+  {% if request.query_params.get("result_sent") == "1" %}
+  <div class="border border-blue-500/40 text-blue-300 bg-blue-500/10 px-4 py-3 rounded-xl text-sm flex gap-3">
+    <i data-lucide="check-circle" class="w-5 h-5 shrink-0"></i>
+    <span>Resultado enviado com sucesso! Aguarde a revisão do administrador.</span>
+  </div>
+  {% endif %}
   {% if awaiting_result_count and awaiting_result_count > 0 %}
-  <div class="border border-amber-500/40 text-amber-300 bg-amber-500/10 px-4 py-3 rounded-xl text-sm flex flex-wrap items-center justify-between gap-3">
-    <span>Você tem {{ awaiting_result_count }} torneio(s) aguardando resultado. Informe em até 24h para evitar suspensão da conta.</span>
-    <a href="/player/results/new" class="px-4 py-2 rounded-full bg-amber-500/20 border border-amber-400/50 text-amber-300 hover:bg-amber-500/30 transition text-sm font-medium">Informar resultado</a>
+  <div class="relative overflow-hidden p-0.5 rounded-2xl bg-gradient-to-r from-amber-500/50 via-amber-400/20 to-amber-600/50 animate-pulse">
+    <div class="bg-[#0b0b0b] rounded-[14px] p-4 flex flex-wrap items-center justify-between gap-4 relative z-10">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-500 shadow-lg shadow-amber-500/10">
+          <i data-lucide="alert-circle" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h4 class="text-sm font-black uppercase text-amber-500 tracking-tight leading-none">Resultados Pendentes</h4>
+          <p class="text-[11px] text-gray-400 mt-1.5 uppercase font-bold tracking-wider">Você tem {{ awaiting_result_count }} torneio(s) aguardando placar. Informe agora para evitar bloqueios.</p>
+        </div>
+      </div>
+      <button onclick="document.querySelector('[data-player-tab=\'ofertas\']').click()" class="px-5 py-2.5 rounded-xl bg-amber-500 text-black text-[10px] font-black uppercase tracking-tighter hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-95">
+        Ver Torneios Pendentes
+      </button>
+    </div>
   </div>
   {% endif %}
 
+  <!-- Header: saudação + botões de ação -->
+  <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div class="space-y-1">
+      <h1 class="font-title text-3xl uppercase">Olá, bem vindo {{ user.nome }}!</h1>
+      <p class="text-gray-400 text-sm">Gerencie seus torneios e acompanhe sua carteira.</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button
+        id="playerOpenWithdrawalModal"
+        class="px-5 py-2 rounded-full border border-white/20 text-white hover:border-emerald-400 transition"
+      >
+        Solicitar saque
+      </button>
+      <button
+        id="playerOpenDepositModal"
+        class="px-5 py-2 rounded-full border border-emerald-400 text-emerald-300 hover:bg-emerald-400 hover:text-black transition"
+      >
+        Adicionar saldo
+      </button>
+    </div>
+  </div>
+
+  <!-- Cards de saldo (sempre visíveis) -->
+  <div class="grid gap-4 md:grid-cols-2">
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 shadow-xl hover:border-emerald-500/20 transition-all duration-300">
+      <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Saldo disponível</p>
+      <p class="text-3xl font-mono text-emerald-400 mt-2 font-bold leading-none">
+        US$ {{ "%.2f"|format(wallet.saldo_disponivel if wallet else 0) }}
+      </p>
+    </div>
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 shadow-xl hover:border-amber-500/20 transition-all duration-300">
+      <p class="text-[10px] uppercase tracking-widest text-gray-500 font-bold">Saldo em jogo (escrow)</p>
+      <p class="text-3xl font-mono text-amber-400 mt-2 font-bold leading-none">
+        US$ {{ "%.2f"|format(wallet.saldo_em_jogo if wallet else 0) }}
+      </p>
+    </div>
+  </div>
+
+  <!-- Abas de navegação -->
   <div class="flex flex-wrap gap-2 border-b border-white/10 pb-2">
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm font-medium bg-emerald-400 text-black border border-emerald-400 border-b-0 -mb-px transition" data-player-tab="criar">Criar oferta</button>
     <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="ofertas">Meus torneios</button>
-    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="resultado">Enviar resultado</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="carteira">Histórico Financeiro</button>
+    <button type="button" class="player-tab px-4 py-2 rounded-t-lg text-sm text-gray-400 hover:text-white border border-transparent border-b-0 transition" data-player-tab="perfil">Meu Perfil</button>
   </div>
 
   <div id="player-tab-criar" class="player-tab-panel space-y-6">
@@ -40,78 +98,139 @@
   <form
     action="/player/offers"
     method="post"
-    class="bg-black border border-white/10 rounded-2xl p-6 grid gap-5 md:grid-cols-2"
+    class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 space-y-8 shadow-2xl"
   >
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Nome do torneio</label>
-      <input
-        name="tournament_name"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        placeholder="Sunday Million"
-      />
+    <!-- Section 1: Tournament Info -->
+    <div class="space-y-6">
+      <div class="flex items-center gap-2 pb-2 border-b border-white/5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-400/10 flex items-center justify-center text-emerald-400">
+          <i data-lucide="trophy" class="w-4 h-4"></i>
+        </div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-white">O que você vai jogar?</h3>
+      </div>
+      
+      <div class="grid gap-5 md:grid-cols-2">
+        <div class="space-y-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+            <i data-lucide="type" class="w-3 h-3"></i> Nome do torneio
+          </label>
+          <input
+            name="tournament_name"
+            required
+            class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 transition-all placeholder-gray-700"
+            placeholder="Ex: Sunday Million, Main Event..."
+          />
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+            <i data-lucide="layout" class="w-3 h-3"></i> Sala / Plataforma
+          </label>
+          <div class="relative group">
+            <select
+              name="room"
+              required
+              class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 appearance-none cursor-pointer transition-all"
+            >
+              <option value="" class="bg-[#0b0b0b]">Selecione a sala</option>
+              {% for room in supported_rooms %}
+              <option value="{{ room }}" class="bg-[#0b0b0b]">{{ room }}</option>
+              {% endfor %}
+            </select>
+            <i data-lucide="chevron-down" class="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600 pointer-events-none group-focus-within:text-emerald-400 transition-colors"></i>
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+            <i data-lucide="ticket" class="w-3 h-3"></i> Buy-in (US$)
+          </label>
+          <div class="relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 font-mono text-sm pointer-events-none">$</span>
+            <input
+              name="buyin"
+              type="number"
+              step="0.01"
+              required
+              class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl pl-8 pr-4 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all placeholder-gray-700"
+              placeholder="0.00"
+            />
+          </div>
+        </div>
+
+        <div class="space-y-2">
+          <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+            <i data-lucide="calendar" class="w-3 h-3"></i> Data e hora de início
+          </label>
+          <input
+            name="start_time"
+            type="datetime-local"
+            class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 transition-all"
+          />
+        </div>
+      </div>
     </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Sala / Plataforma</label>
-      <select
-        name="room"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-      >
-        <option value="">Selecione a sala</option>
-        {% for room in supported_rooms %}
-        <option value="{{ room }}">{{ room }}</option>
-        {% endfor %}
-      </select>
+
+    <!-- Section 2: Offer Settings -->
+    <div class="space-y-6">
+      <div class="flex items-center gap-2 pb-2 border-b border-white/5">
+        <div class="w-8 h-8 rounded-lg bg-emerald-400/10 flex items-center justify-center text-emerald-400">
+          <i data-lucide="settings-2" class="w-4 h-4"></i>
+        </div>
+        <h3 class="text-xs font-black uppercase tracking-widest text-white">Condições de Venda</h3>
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <i data-lucide="trending-up" class="w-3 h-3"></i> Markup
+            </label>
+            <span class="text-[9px] text-gray-600 font-medium">Lucratividade sobre a cota</span>
+          </div>
+          <input
+            name="markup"
+            type="number"
+            step="0.01"
+            required
+            class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all placeholder-gray-700"
+            placeholder="1.00"
+            value="1.00"
+          />
+        </div>
+
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[10px] font-bold uppercase tracking-wider text-gray-500 flex items-center gap-1.5">
+              <i data-lucide="pie-chart" class="w-3 h-3"></i> Total disponível (%)
+            </label>
+            <span class="text-[9px] text-gray-600 font-medium">Máximo que deseja vender</span>
+          </div>
+          <div class="relative">
+            <span class="absolute right-4 top-1/2 -translate-y-1/2 text-gray-600 font-mono text-sm pointer-events-none">%</span>
+            <input
+              name="total_pct"
+              type="number"
+              step="0.01"
+              required
+              class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl pl-4 pr-9 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all placeholder-gray-700"
+              placeholder="100.00"
+              max="100"
+            />
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Buy-in (US$)</label>
-      <input
-        name="buyin"
-        type="number"
-        step="0.01"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        placeholder="215.00"
-      />
-    </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Data e hora</label>
-      <input
-        name="start_time"
-        type="datetime-local"
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-      />
-    </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Markup</label>
-      <input
-        name="markup"
-        type="number"
-        step="0.01"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        placeholder="1.10"
-      />
-    </div>
-    <div class="space-y-2">
-      <label class="text-xs text-gray-400">Total disponível (%)</label>
-      <input
-        name="total_pct"
-        type="number"
-        step="0.01"
-        required
-        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
-        placeholder="70"
-      />
-    </div>
-    <div class="md:col-span-2">
+
+    <div class="pt-4">
       <button
         type="submit"
-        class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+        class="w-full px-6 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-widest text-xs transition-all shadow-[0_4px_20px_rgba(16,185,129,0.2)] hover:shadow-[0_8px_30px_rgba(16,185,129,0.4)] active:scale-[0.98] flex items-center justify-center gap-2"
       >
-        Publicar oferta
+        <i data-lucide="rocket" class="w-4 h-4"></i>
+        Publicar minha oferta
       </button>
+      </p>
     </div>
   </form>
   </div>
@@ -119,82 +238,104 @@
   <div id="player-tab-ofertas" class="player-tab-panel hidden space-y-4">
   <div class="flex items-center justify-between">
     <h2 class="font-title text-xl uppercase">Meus torneios</h2>
-    <span class="text-xs text-gray-400">{{ offers|length }} torneios</span>
+    <span class="text-xs bg-white/5 px-3 py-1 rounded-full text-gray-500 font-bold uppercase tracking-widest">{{ offers|length }} torneios</span>
   </div>
-    <div id="player-offers-list" class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {% for offer in offers %}
-      <div class="player-offer-card bg-[#0b0b0b] border border-white/10 rounded-xl p-4 space-y-2" data-offer-id="{{ offer.id }}">
-        <p class="text-sm text-gray-400">{{ offer.tournament.sharkscope_id or "Sala não informada" }}</p>
-        <p class="text-lg font-semibold">{{ offer.tournament.nome }}</p>
-        <p class="text-xs text-gray-400">
-          Buy-in <span class="font-mono text-white">US$ {{ "%.2f"|format(offer.tournament.buyin) }}</span>
-        </p>
-        <div class="flex items-center justify-between text-xs text-gray-400">
-          <span>Markup {{ offer.markup }}</span>
-          <span class="font-mono text-emerald-400">{{ offer.vendido_pct }}% vendido</span>
-        </div>
-        <p class="text-xs text-gray-500">
-          Escrow: <span class="font-mono">{{ offer.escrow_status }}</span> ·
-          Torneio: <span class="font-mono">{{ offer.tournament.status }}</span>
-        </p>
-        <button
-          type="button"
-          class="player-offer-details w-full mt-2 px-3 py-2 rounded-lg border border-white/20 text-gray-300 hover:border-emerald-400 hover:text-emerald-300 transition text-sm"
-          data-offer-id="{{ offer.id }}"
-        >
-          Ver detalhes
-        </button>
-        {% if offer.tournament.status != "Finalizado" %}
-        <details class="pt-2 border-t border-white/10">
-          <summary class="cursor-pointer text-xs text-emerald-300 hover:text-emerald-200">Editar torneio</summary>
-          {% if offer.investments %}
-          <p class="text-xs text-amber-400 mt-2">Há aportes neste torneio. O total disponível (%) não pode ser menor que o já vendido ({{ "%.2f"|format(offer.vendido_pct) }}%).</p>
-          {% endif %}
-          <form action="/player/offers/{{ offer.id }}/update" method="post" class="grid gap-2 mt-2">
-            <input name="tournament_name" value="{{ offer.tournament.nome }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <select name="room" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm">
-              {% for room in supported_rooms %}
-              <option value="{{ room }}" {{ 'selected' if room == (offer.tournament.plataforma or offer.tournament.sharkscope_id or '') else '' }}>{{ room }}</option>
-              {% endfor %}
-            </select>
-            <input name="buyin" type="number" step="0.01" min="0.01" value="{{ offer.tournament.buyin }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <input name="start_time" type="datetime-local" value="{{ offer.tournament.data_hora.strftime('%Y-%m-%dT%H:%M') if offer.tournament.data_hora else '' }}" class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <input name="markup" type="number" step="0.01" min="0.01" value="{{ offer.markup }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <input name="total_pct" type="number" step="0.01" min="1" max="100" value="{{ offer.total_disponivel_pct }}" required class="bg-black border border-white/10 rounded-lg px-3 py-2 text-sm" />
-            <button type="submit" class="px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">Salvar edição</button>
-          </form>
-        </details>
-        {% else %}
-        <div class="pt-2 border-t border-white/10">
-          <p class="text-xs text-gray-500">Este torneio foi finalizado e não pode mais ser editado.</p>
-        </div>
-        {% endif %}
-        {% if offer.investments and offer.tournament.status == "Aberto" and offer.escrow_status != "REFUNDED" %}
-        <div class="pt-2 border-t border-white/10 grid gap-2">
-          {% if offer.escrow_status == "COMPLETE" %}
-          <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
-            <button type="submit" class="w-full px-3 py-2 rounded-lg bg-emerald-400 text-black text-sm font-semibold">
-              Confirmar que vai jogar (liberar escrow)
-            </button>
-          </form>
-          {% elif offer.escrow_status == "COLLECTING" %}
-          <form method="post" action="/player/offers/{{ offer.id }}/confirm-play">
-            <input type="hidden" name="force_partial" value="1" />
-            <button type="submit" class="w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/50 text-amber-300 text-sm font-semibold hover:bg-amber-500/30">
-              Iniciar partida (mesmo sem 100%)
-            </button>
-          </form>
-          <p class="text-xs text-amber-400/80">Porcentagem não atingida. Ao iniciar, o valor já aportado será liberado e o torneio seguirá.</p>
-          {% endif %}
-          <form method="post" action="/player/offers/{{ offer.id }}/decline-play">
-            <button type="submit" class="w-full px-3 py-2 rounded-lg border border-red-500 text-red-300 hover:bg-red-500/10 text-sm">
-              Informar que não vai jogar (estornar apoiadores)
-            </button>
-          </form>
-        </div>
-        {% endif %}
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl overflow-hidden shadow-2xl">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="text-[10px] uppercase tracking-widest text-gray-500 border-b border-white/5 bg-white/[0.02]">
+            <tr>
+              <th class="px-6 py-4 font-black">Torneio</th>
+              <th class="px-6 py-4 font-black">Sala</th>
+              <th class="px-6 py-4 font-black">Buy-in</th>
+              <th class="px-6 py-4 font-black">Markup</th>
+              <th class="px-6 py-4 font-black text-center">Vendido (%)</th>
+              <th class="px-6 py-4 font-black text-center">Status</th>
+              <th class="px-6 py-4 font-black text-right">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="player-offers-list" class="divide-y divide-white/5">
+            {% for offer in offers %}
+            <tr class="tournament-row hover:bg-white/[0.02] transition-colors cursor-pointer group relative {% if offer.tournament.status == 'Jogando' or offer.tournament.status == 'Finalizado' %}{% if offer.tournament.id not in has_result_ids %} border-l-4 border-amber-500/40 bg-amber-500/[0.02] {% endif %}{% endif %}" data-offer-id="{{ offer.id }}">
+              <td class="px-6 py-4">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 rounded-lg {% if offer.tournament.status == 'Jogando' or offer.tournament.status == 'Finalizado' %}{% if offer.tournament.id not in has_result_ids %} bg-amber-500/20 text-amber-500 {% else %} bg-emerald-400/10 text-emerald-400 {% endif %}{% else %} bg-emerald-400/10 text-emerald-400 {% endif %} flex items-center justify-center group-hover:bg-emerald-400 group-hover:text-black transition-colors">
+                    <i data-lucide="trophy" class="w-4 h-4 transition-colors"></i>
+                  </div>
+                  <div>
+                    <p class="font-bold text-white group-hover:text-emerald-400 transition-colors">{{ offer.tournament.nome }}</p>
+                    <p class="text-[10px] text-gray-500 uppercase">{{ (offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "Sem data") }}</p>
+                  </div>
+                </div>
+              </td>
+              <td class="px-6 py-4 text-gray-400">
+                {{ offer.tournament.sharkscope_id or "Sala não informada" }}
+              </td>
+              <td class="px-6 py-4 font-mono text-white">
+                US$ {{ "%.2f"|format(offer.tournament.buyin) }}
+              </td>
+              <td class="px-6 py-4 font-mono text-gray-400">
+                {{ offer.markup }}
+              </td>
+              <td class="px-6 py-4 text-center">
+                <div class="inline-flex flex-col items-center gap-1.5">
+                  <div class="inline-flex items-center gap-2">
+                    <div class="w-16 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div class="h-full bg-emerald-400 rounded-full" style="width: {{ offer.progress_sale_pct }}%"></div>
+                    </div>
+                    <span class="font-mono text-xs text-emerald-400">{{ "%.1f"|format(offer.progress_sale_pct) }}%</span>
+                  </div>
+                  <p class="text-[9px] text-gray-500 uppercase tracking-tighter">
+                    {{ offer.vendido_pct }}% / {{ offer.total_disponivel_pct }}% total
+                  </p>
+                </div>
+              </td>
+              <td class="px-6 py-4 text-center">
+                <div class="flex flex-col items-center gap-1.5">
+                  <span class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider 
+                    {% if offer.tournament.status == 'Aberto' %} bg-emerald-400/10 text-emerald-400 border border-emerald-400/20
+                    {% elif offer.tournament.status == 'Jogando' %} bg-blue-500/10 text-blue-400 border border-blue-500/20
+                    {% elif offer.tournament.status == 'Finalizado' %} bg-emerald-400 text-black border border-emerald-400
+                    {% else %} bg-gray-500/10 text-gray-400 border border-gray-500/20
+                    {% endif %}">
+                    {{ offer.tournament.status }}
+                  </span>
+                  {% if offer.tournament.id in has_result_ids %}
+                    {% set res = result_map.get(offer.tournament.id) %}
+                    {% if res %}
+                      <span class="px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-tighter border
+                        {% if res.review_status == 'APPROVED' %} bg-emerald-500/20 text-emerald-400 border-emerald-500/30
+                        {% elif res.review_status == 'REJECTED' %} bg-red-500/20 text-red-500 border-red-500/30
+                        {% elif res.review_status == 'UNDER_REVIEW' %} bg-blue-500/20 text-blue-400 border-blue-500/30
+                        {% else %} bg-amber-500/20 text-amber-500 border-amber-500/30
+                        {% endif %}">
+                        {% if res.review_status == 'APPROVED' %} Aprovado {% elif res.review_status == 'REJECTED' %} Rejeitado {% elif res.review_status == 'UNDER_REVIEW' %} Em Revisão {% else %} Pendente {% endif %}
+                        {% if res.review_status == 'APPROVED' %} · US$ {{ "%.2f"|format(res.valor_premio) }} {% endif %}
+                      </span>
+                    {% endif %}
+                  {% elif offer.tournament.status == 'Finalizado' or offer.tournament.status == 'Jogando' %}
+                    <span class="text-[9px] font-bold text-amber-500 uppercase tracking-tighter italic opacity-80">Placar Pendente</span>
+                  {% endif %}
+                </div>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <div class="flex items-center justify-end gap-2">
+                  {% if (offer.tournament.status == 'Jogando' or offer.tournament.status == 'Finalizado') and offer.tournament.id not in has_result_ids %}
+                  <button type="button" class="player-offer-details px-3 py-1.5 rounded-lg bg-amber-500 text-black hover:bg-amber-400 transition-all flex items-center gap-2 shadow-lg shadow-amber-500/20">
+                    <i data-lucide="medal" class="w-3.5 h-3.5"></i>
+                    <span class="text-[9px] font-black uppercase tracking-tighter">Informar Placar</span>
+                  </button>
+                  {% endif %}
+                  <button type="button" class="player-offer-details p-2 rounded-lg bg-white/5 text-gray-400 hover:bg-emerald-400 hover:text-black transition-all">
+                    <i data-lucide="eye" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
-      {% endfor %}
     </div>
   </div>
 
@@ -204,40 +345,638 @@
     </div>
   </div>
 
-  <div id="playerOfferModal" class="fixed inset-0 z-50 hidden">
-    <div class="absolute inset-0 bg-black/70" id="playerOfferModalBackdrop"></div>
-    <div class="absolute inset-0 flex items-center justify-center p-4 overflow-y-auto">
-      <div id="playerOfferModalContent" class="bg-[#0b0b0b] border border-white/10 rounded-2xl p-6 w-full max-w-2xl my-8 shadow-xl">
-      <div class="flex justify-between items-start mb-4">
-        <h3 id="playerOfferModalTitle" class="font-title text-xl uppercase text-emerald-400">Detalhes do torneio</h3>
-        <button type="button" id="playerOfferModalClose" class="inline-flex items-center justify-center w-8 h-8 rounded-full border border-white/20 text-gray-400 hover:text-white hover:border-emerald-400 transition" aria-label="Fechar detalhes do torneio">✕</button>
+  <!-- ===== ABA HISTÓRICO ===== -->
+  <div id="player-tab-carteira" class="player-tab-panel hidden space-y-6">
+
+    <!-- Tabela de depósitos -->
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-400/10 flex items-center justify-center text-emerald-400 border border-emerald-400/20">
+            <i data-lucide="arrow-down-left" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-title text-xl uppercase leading-none">Seus Depósitos</h3>
+            <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Últimas 10 transações via PIX</p>
+          </div>
+        </div>
       </div>
-      <div id="playerOfferModalBody" class="space-y-4 text-sm text-gray-300"></div>
-      <div id="playerOfferModalActions" class="mt-4 pt-4 border-t border-white/10 space-y-2"></div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="text-[10px] uppercase tracking-widest text-gray-500 border-b border-white/5 bg-white/[0.02]">
+            <tr>
+              <th class="px-6 py-4 font-black">ID Depósito</th>
+              <th class="px-6 py-4 font-black">Valor</th>
+              <th class="px-6 py-4 font-black text-center">Status</th>
+              <th class="px-6 py-4 font-black text-right">Data</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            {% for tx in pix_transactions %}
+            <tr class="group hover:bg-white/[0.02] transition-colors">
+              <td class="px-6 py-4">
+                <span class="font-mono text-[11px] text-gray-400 group-hover:text-white transition-colors">{{ tx.order_nsu or "—" }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <span class="font-mono font-bold text-emerald-400 text-sm">US$ {{ "%.2f"|format(tx.amount) }}</span>
+              </td>
+              <td class="px-6 py-4 text-center">
+                <span class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border 
+                  {% if tx.status == 'PAID' %} bg-emerald-400/10 text-emerald-400 border-emerald-400/20
+                  {% elif tx.status == 'EXPIRED' %} bg-red-500/10 text-red-400 border-red-500/20
+                  {% else %} bg-amber-400/10 text-amber-400 border-amber-400/20
+                  {% endif %}">
+                  {{ 'Pago' if tx.status == 'PAID' else ('Expirado' if tx.status == 'EXPIRED' else 'Pendente') }}
+                </span>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <span class="text-[11px] font-mono text-gray-500">
+                  {% set dt = tx.created_at_local or tx.created_at %}
+                  {{ dt.strftime("%d/%m %H:%M") if dt else "—" }}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="4" class="px-6 py-12 text-center text-gray-500 italic">Nenhum depósito registrado.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Tabela de saques -->
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 space-y-6 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
+            <i data-lucide="arrow-up-right" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="font-title text-xl uppercase leading-none">Solicitações de Saque</h3>
+            <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Histórico de resgates</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm text-left">
+          <thead class="text-[10px] uppercase tracking-widest text-gray-500 border-b border-white/5 bg-white/[0.02]">
+            <tr>
+              <th class="px-6 py-4 font-black">Valor</th>
+              <th class="px-6 py-4 font-black">Chave PIX</th>
+              <th class="px-6 py-4 font-black text-center">Status</th>
+              <th class="px-6 py-4 font-black">Obervação</th>
+              <th class="px-6 py-4 font-black text-right">Data</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-white/5">
+            {% for wr in withdrawal_requests %}
+            <tr class="group hover:bg-white/[0.02] transition-colors">
+              <td class="px-6 py-4">
+                <span class="font-mono font-bold text-white text-sm">US$ {{ "%.2f"|format(wr.amount) }}</span>
+              </td>
+              <td class="px-6 py-4">
+                <span class="font-mono text-[10px] text-gray-500 max-w-[150px] truncate block" title="{{ wr.pix_key }}">{{ wr.pix_key }}</span>
+              </td>
+              <td class="px-6 py-4 text-center">
+                <span class="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border 
+                  {% if wr.status == 'PENDING' %} bg-amber-400/10 text-amber-400 border-amber-400/20
+                  {% elif wr.status == 'APPROVED' %} bg-emerald-400 text-black border-emerald-400
+                  {% else %} bg-red-500/10 text-red-400 border-red-500/20
+                  {% endif %}">
+                  {{ 'Pendente' if wr.status == 'PENDING' else ('Aprovado' if wr.status == 'APPROVED' else 'Rejeitado') }}
+                </span>
+              </td>
+              <td class="px-6 py-4">
+                <p class="text-[11px] text-gray-400 italic">{{ wr.admin_note or "—" }}</p>
+              </td>
+              <td class="px-6 py-4 text-right">
+                <span class="text-[11px] font-mono text-gray-500 whitespace-nowrap">
+                  {{ wr.created_at.strftime("%d/%m %H:%M") if wr.created_at else "—" }}
+                </span>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="5" class="px-6 py-12 text-center text-gray-500 italic">Nenhum saque registrado.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <!-- ===== FIM ABA CARTEIRA ===== -->
+
+  <!-- ===== ABA PERFIL ===== -->
+  <div id="player-tab-perfil" class="player-tab-panel hidden space-y-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <h2 class="font-title text-2xl uppercase">Meu Perfil</h2>
+        <p class="text-gray-400 text-sm mt-1">Gerencie suas informações pessoais e senha de acesso.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" onclick="togglePlayerProfileMode('edit')" class="px-4 py-2 rounded-lg bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20 text-xs font-bold uppercase tracking-widest transition flex items-center gap-2">
+          <i data-lucide="pencil" class="w-3.5 h-3.5"></i> Editar
+        </button>
+        <button type="button" onclick="togglePlayerProfileMode('password')" class="px-4 py-2 rounded-lg border border-white/10 hover:border-emerald-400/50 text-gray-300 hover:text-emerald-400 text-xs font-bold uppercase tracking-widest transition flex items-center gap-2">
+          <i data-lucide="lock" class="w-3.5 h-3.5"></i> Senha
+        </button>
+      </div>
+    </div>
+
+    <!-- Mensagens de Feedback -->
+    {% set pwd_error = request.query_params.get("pwd_error") %}
+    {% set pwd_success = request.query_params.get("pwd_success") %}
+    {% set profile_success = request.query_params.get("profile_success") %}
+    {% if profile_success or pwd_success or pwd_error %}
+    <div class="space-y-2 mb-6">
+      {% if profile_success %}
+      <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+        <i data-lucide="check-circle" class="w-4 h-4"></i> Perfil atualizado com sucesso.
+      </div>
+      {% endif %}
+      {% if pwd_error %}
+      <div class="border border-red-500/40 text-red-300 bg-red-500/10 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+        <i data-lucide="alert-circle" class="w-4 h-4"></i> {{ pwd_error }}
+      </div>
+      {% endif %}
+      {% if pwd_success %}
+      <div class="border border-emerald-500/40 text-emerald-300 bg-emerald-500/10 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
+        <i data-lucide="check-circle" class="w-4 h-4"></i> Senha atualizada com sucesso.
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 shadow-2xl">
+      <!-- View Mode -->
+      <div id="player-profile-view" class="grid gap-8 md:grid-cols-[auto_1fr] animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div class="space-y-3 flex flex-col items-center md:items-start">
+          <label class="text-[10px] uppercase tracking-widest text-gray-500 font-bold hidden md:block">Foto de Perfil</label>
+          <div class="relative group">
+            <img 
+              src="{{ user.profile_photo_url if user and user.profile_photo_url else '/static/img/default-avatar.png' }}" 
+              alt="Avatar" 
+              class="w-32 h-32 rounded-3xl object-cover border border-white/10 shadow-2xl ring-4 ring-black"
+            />
+            <div class="absolute inset-0 rounded-3xl bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer border border-emerald-400/50" onclick="togglePlayerProfileMode('edit')">
+              <i data-lucide="camera" class="w-6 h-6 text-emerald-400"></i>
+            </div>
+          </div>
+        </div>
+        
+        <div class="grid gap-6 sm:grid-cols-2 content-center">
+          <div class="space-y-1">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-bold block">Nome Completo</label>
+            <p class="text-white text-lg font-medium">{{ user.nome if user else '-' }}</p>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-bold block">E-mail de Cadastro</label>
+            <p class="text-gray-300 font-medium">{{ user.email if user else '-' }}</p>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-bold block">Chave PIX (Recebimento)</label>
+            <p class="text-white font-mono text-sm bg-white/5 px-3 py-1.5 rounded inline-block">{{ user.pix_key if user and user.pix_key else 'Não cadastrada' }}</p>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] uppercase tracking-widest text-gray-500 font-bold block">Tipo de Perfil</label>
+            <span class="px-2.5 py-1 rounded bg-blue-500/10 text-[10px] font-black uppercase text-blue-400 tracking-wider inline-flex items-center gap-1 mt-1 border border-blue-500/20">
+              <i data-lucide="user" class="w-3 h-3"></i> {{ user.tipo if user else 'Jogador' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Edit Profile Mode -->
+      <div id="player-profile-edit" class="hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-400/10 flex items-center justify-center text-emerald-400">
+              <i data-lucide="user-cog" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="font-title uppercase text-white leading-none">Editar Dados</h3>
+              <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Atualize informações da sua conta</p>
+            </div>
+          </div>
+          <button type="button" onclick="togglePlayerProfileMode('view')" class="text-xs text-gray-400 hover:text-white transition uppercase tracking-widest font-bold flex items-center gap-1">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i> Cancelar
+          </button>
+        </div>
+        
+        <form method="post" action="/player/profile/update" class="space-y-6">
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="space-y-2">
+              <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2"><i data-lucide="user" class="w-3 h-3 text-emerald-400"></i> Nome Completo</label>
+              <input type="text" name="nome" value="{{ user.nome if user else '' }}" required class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2"><i data-lucide="credit-card" class="w-3 h-3 text-emerald-400"></i> Chave PIX (Recebimento)</label>
+              <input type="text" name="pix_key" value="{{ user.pix_key if user and user.pix_key else '' }}" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white font-mono placeholder-gray-600 focus:outline-none focus:border-emerald-400 transition-colors" placeholder="Ex: 123.456.789-00 ou email@..." />
+            </div>
+          </div>
+          <div class="flex justify-end pt-2">
+            <button type="submit" class="px-6 py-3 rounded-xl bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30 hover:bg-emerald-300 transition flex items-center gap-2">
+              <i data-lucide="save" class="w-4 h-4"></i> Salvar Alterações
+            </button>
+          </div>
+        </form>
+        
+        <form method="post" action="/player/profile/photo" enctype="multipart/form-data" class="mt-8 pt-6 border-t border-white/5 space-y-4">
+          <div class="space-y-3">
+            <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2"><i data-lucide="image" class="w-3 h-3 text-emerald-400"></i> Alterar Foto de Perfil</label>
+            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <input type="file" name="photo" accept="image/*" class="w-full sm:w-auto text-sm text-gray-400 file:mr-4 file:py-2.5 file:px-5 file:rounded-xl file:border-0 file:text-xs file:font-bold file:uppercase file:tracking-widest file:bg-white/5 file:text-white hover:file:bg-white/10 hover:file:text-emerald-400 transition-colors cursor-pointer" />
+              <button type="submit" class="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-white/10 text-gray-300 hover:bg-white/5 hover:text-emerald-400 transition text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+                <i data-lucide="upload-cloud" class="w-4 h-4"></i> Atualizar Foto
+              </button>
+            </div>
+            <p class="text-[10px] text-gray-500 uppercase tracking-widest">Tamanho recomendado: 256x256px. Formatos: JPG, PNG.</p>
+          </div>
+        </form>
+      </div>
+
+      <!-- Change Password Mode -->
+      <div id="player-password-edit" class="hidden animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div class="flex items-center justify-between mb-8 pb-4 border-b border-white/5">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 border border-blue-500/20">
+              <i data-lucide="shield" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="font-title uppercase text-white leading-none">Segurança</h3>
+              <p class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Alterar senha de acesso</p>
+            </div>
+          </div>
+          <button type="button" onclick="togglePlayerProfileMode('view')" class="text-xs text-gray-400 hover:text-white transition uppercase tracking-widest font-bold flex items-center gap-1">
+            <i data-lucide="x" class="w-3.5 h-3.5"></i> Cancelar
+          </button>
+        </div>
+        
+        <form method="post" action="/player/password/update" class="space-y-6">
+          <div class="grid md:grid-cols-3 gap-6">
+            <div class="space-y-2">
+              <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">Senha atual</label>
+              <input type="password" name="current_password" required class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-400 transition-colors" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">Nova senha</label>
+              <input type="password" name="new_password" required placeholder="8+ caracteres" class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-400 transition-colors" />
+            </div>
+            <div class="space-y-2">
+              <label class="text-[10px] uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">Confirmar nova senha</label>
+              <input type="password" name="confirm_password" required class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-400 transition-colors" />
+            </div>
+          </div>
+          <div class="flex justify-end pt-2">
+            <button type="submit" class="px-6 py-3 rounded-xl bg-blue-500 text-white font-semibold shadow-lg shadow-blue-500/30 hover:bg-blue-400 transition flex items-center gap-2">
+              <i data-lucide="lock" class="w-4 h-4"></i> Atualizar Senha
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  <!-- ===== FIM ABA PERFIL ===== -->
+
+  <div id="playerOfferModal" class="fixed inset-0 z-50 hidden">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" id="playerOfferModalBackdrop"></div>
+    <div class="absolute inset-0 flex items-center justify-center p-4">
+      <div id="playerOfferModalContent" class="bg-[#0b0b0b] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden scale-95 opacity-0 transition-all duration-300">
+        <!-- Header -->
+        <div class="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-white/[0.02]">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-emerald-400/10 flex items-center justify-center text-emerald-400">
+              <i data-lucide="trophy" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 id="playerOfferModalTitle" class="font-black uppercase tracking-tight text-white leading-none">Detalhes</h3>
+              <p id="playerOfferModalSubtitle" class="text-[10px] text-gray-500 uppercase tracking-widest mt-1">Gerenciamento de Torneio</p>
+            </div>
+          </div>
+          <button type="button" id="playerOfferModalClose" class="w-8 h-8 rounded-lg bg-white/5 text-gray-400 hover:bg-red-500/20 hover:text-red-400 transition-all ring-1 ring-white/10 flex items-center justify-center">
+            <i data-lucide="x" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Scrollable Body -->
+        <div class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
+          <div id="playerOfferModalBody" class="space-y-6"></div>
+        </div>
+
+        <!-- Action Footer -->
+        <div id="playerOfferModalActions" class="px-6 py-4 bg-white/[0.02] border-t border-white/5 grid gap-3 md:grid-cols-2"></div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- Modal Depósito (Jogador) -->
+<div id="playerDepositModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/70"></div>
+  <div class="relative max-w-md mx-auto mt-24 bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-title text-lg uppercase text-emerald-400">Adicionar saldo</h3>
+      <button id="playerCloseDepositModal" type="button" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <p class="text-sm text-gray-400">Digite o valor em USD. A cobrança será convertida para BRL pela PTAX.</p>
+    <div class="space-y-2">
+      <label class="text-xs text-gray-400">Valor em USD (mínimo US$ 1,00)</label>
+      <input
+        id="playerDepositAmount"
+        type="number"
+        min="1"
+        step="0.01"
+        placeholder="100.00"
+        class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+      />
+      <p id="playerDepositRateInfo" class="text-[10px] text-gray-500 uppercase tracking-tight transition-opacity duration-300 opacity-0">Cotação PTAX: -</p>
+      <p id="playerDepositConversionInfo" class="text-xs text-emerald-400 font-medium transition-opacity duration-300 opacity-0">Conversão estimada: -</p>
+    </div>
+    <button
+      id="playerSubmitDeposit"
+      type="button"
+      class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+    >
+      Gerar pagamento
+    </button>
+    <p class="text-xs text-gray-500">Você será redirecionado para concluir o pagamento no checkout.</p>
+  </div>
+</div>
+
+<!-- Modal Saque (Jogador) -->
+<div id="playerWithdrawalModal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/70"></div>
+  <div class="relative max-w-md mx-auto mt-24 bg-[#090909] border border-white/10 rounded-2xl p-6 space-y-4">
+    <div class="flex items-center justify-between">
+      <h3 class="font-title text-lg uppercase text-emerald-400">Solicitar saque</h3>
+      <button id="playerCloseWithdrawalModal" type="button" class="text-gray-400 hover:text-white">✕</button>
+    </div>
+    <form id="playerWithdrawalForm" method="post" action="/player/withdrawals/request" class="space-y-3">
+      <input type="hidden" id="playerAvailableBalance" value="{{ wallet.saldo_disponivel if wallet else 0 }}">
+      <div class="space-y-2">
+        <label class="text-xs text-gray-400">Valor (US$)</label>
+        <input
+          id="playerWithdrawAmount"
+          name="amount"
+          type="number"
+          min="0.01"
+          step="0.01"
+          required
+          class="w-full bg-[#0b0b0b] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
+        />
+        <p id="playerWithdrawRateInfo" class="text-[10px] text-gray-500 uppercase tracking-tight transition-opacity duration-300 opacity-0">Cotação PTAX: -</p>
+        <p id="playerWithdrawConversionInfo" class="text-xs text-emerald-400 font-medium transition-opacity duration-300 opacity-0">Conversão estimada: -</p>
+      </div>
+      <div class="bg-emerald-400/10 border border-emerald-400/20 rounded-xl p-4 space-y-2">
+        <p class="text-xs text-gray-400 uppercase font-medium">PIX para recebimento</p>
+        <p class="text-white font-mono break-all">{{ user.pix_key or "Nenhuma chave cadastrada" }}</p>
+        <p class="text-[10px] text-emerald-400/70">O saque será enviado para sua chave cadastrada no perfil.</p>
+      </div>
+      <button
+        type="submit"
+        class="w-full px-5 py-3 rounded-full bg-emerald-400 text-black font-semibold shadow-lg shadow-emerald-400/30"
+      >
+        Enviar solicitação
+      </button>
+    </form>
+  </div>
+</div>
+
 <script>
+// --- Carteira: Depósito e Saque ---
+(function() {
+  var depositModal = document.getElementById("playerDepositModal");
+  var withdrawalModal = document.getElementById("playerWithdrawalModal");
+  var openDepositBtn = document.getElementById("playerOpenDepositModal");
+  var closeDepositBtn = document.getElementById("playerCloseDepositModal");
+  var openWithdrawalBtn = document.getElementById("playerOpenWithdrawalModal");
+  var closeWithdrawalBtn = document.getElementById("playerCloseWithdrawalModal");
+  var depositAmountInput = document.getElementById("playerDepositAmount");
+  var depositRateInfo = document.getElementById("playerDepositRateInfo");
+  var depositConversionInfo = document.getElementById("playerDepositConversionInfo");
+  var withdrawAmountInput = document.getElementById("playerWithdrawAmount");
+  var withdrawRateInfo = document.getElementById("playerWithdrawRateInfo");
+  var withdrawConversionInfo = document.getElementById("playerWithdrawConversionInfo");
+  var submitDepositBtn = document.getElementById("playerSubmitDeposit");
+  var withdrawalForm = document.getElementById("playerWithdrawalForm");
+  var availableBalanceInput = document.getElementById("playerAvailableBalance");
+
+  function formatBRL(value) {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value || 0));
+  }
+  function formatUSD(val) {
+    if (isNaN(val)) return "$ 0.00";
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
+  }
+
+  function openDepositModal() { depositModal && depositModal.classList.remove("hidden"); updateDepositQuote(); }
+  function closeDepositModal() { depositModal && depositModal.classList.add("hidden"); }
+  function openWithdrawalModal() { withdrawalModal && withdrawalModal.classList.remove("hidden"); updateWithdrawQuote(); }
+  function closeWithdrawalModal() { withdrawalModal && withdrawalModal.classList.add("hidden"); }
+
+  openDepositBtn && openDepositBtn.addEventListener("click", openDepositModal);
+  closeDepositBtn && closeDepositBtn.addEventListener("click", closeDepositModal);
+  openWithdrawalBtn && openWithdrawalBtn.addEventListener("click", openWithdrawalModal);
+  closeWithdrawalBtn && closeWithdrawalBtn.addEventListener("click", closeWithdrawalModal);
+
+  depositModal && depositModal.addEventListener("click", function(e) {
+    if (e.target === depositModal || e.target === depositModal.firstElementChild) closeDepositModal();
+  });
+  withdrawalModal && withdrawalModal.addEventListener("click", function(e) {
+    if (e.target === withdrawalModal || e.target === withdrawalModal.firstElementChild) closeWithdrawalModal();
+  });
+
+  var quoteReqSeq = 0;
+  async function updateDepositQuote() {
+    var amount = Number(depositAmountInput ? depositAmountInput.value : 0);
+    if (!amount || amount <= 0) {
+      depositRateInfo && depositRateInfo.classList.add("opacity-0");
+      depositConversionInfo && depositConversionInfo.classList.add("opacity-0");
+      return;
+    }
+    var reqId = ++quoteReqSeq;
+    try {
+      var response = await fetch("/api/deposit/quote?amount=" + encodeURIComponent(amount));
+      if (reqId !== quoteReqSeq) return;
+      if (!response.ok) return;
+      var data = await response.json();
+      if (reqId !== quoteReqSeq) return;
+      if (depositRateInfo) {
+        depositRateInfo.textContent = "Cotação PTAX: 1 USD = " + formatBRL(data.ptax_rate);
+        depositRateInfo.classList.remove("opacity-0");
+      }
+      if (depositConversionInfo) {
+        depositConversionInfo.textContent = "Conversão estimada: " + formatUSD(data.amount_usd) + " ≈ " + formatBRL(data.amount_brl);
+        depositConversionInfo.classList.remove("opacity-0");
+      }
+    } catch (e) {
+      if (depositRateInfo) depositRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+      if (reqId === quoteReqSeq) {
+        depositRateInfo && depositRateInfo.classList.add("opacity-0");
+        depositConversionInfo && depositConversionInfo.classList.add("opacity-0");
+      }
+    }
+  }
+
+  var depositDebounceTimer = null;
+  depositAmountInput && depositAmountInput.addEventListener("input", function() {
+    if (depositDebounceTimer) clearTimeout(depositDebounceTimer);
+    depositDebounceTimer = setTimeout(updateDepositQuote, 250);
+  });
+
+  // --- Controle da Aba Perfil ---
+  window.togglePlayerProfileMode = function(mode) {
+    const view = document.getElementById("player-profile-view");
+    const edit = document.getElementById("player-profile-edit");
+    const pwd = document.getElementById("player-password-edit");
+    
+    view.classList.add("hidden");
+    edit.classList.add("hidden");
+    pwd.classList.add("hidden");
+    
+    if (mode === 'edit') edit.classList.remove("hidden");
+    else if (mode === 'password') pwd.classList.remove("hidden");
+    else view.classList.remove("hidden");
+  };
+
+  // Se houver algum parâmetro de URL indicando sucesso ou erro de edição, garantimos que a aba abra
+  document.addEventListener("DOMContentLoaded", function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.has('profile_success') || urlParams.has('pwd_success') || urlParams.has('pwd_error') || urlParams.get('tab') === 'perfil') {
+      const perfilTabBtn = document.querySelector('button[data-player-tab="perfil"]');
+      if (perfilTabBtn) perfilTabBtn.click();
+      
+      // Se for erro de senha especificamente, abre a tela de senha
+      if(urlParams.has('pwd_error') && window.location.search.indexOf('password') > -1) {
+          // O backend não distingue erro de foto vs senha neste query param especifico pra player no design atual
+          // mas vamos assumir que o toggle padrao exibe o dashboard normal para erro e o usuario pode escolher a tab manualmente
+      }
+    }
+  });
+
+  var quoteWithdrawSeq = 0;
+  async function updateWithdrawQuote() {
+    var amount = Number(withdrawAmountInput ? withdrawAmountInput.value : 0);
+    if (!amount || amount <= 0) {
+      withdrawRateInfo && withdrawRateInfo.classList.add("opacity-0");
+      withdrawConversionInfo && withdrawConversionInfo.classList.add("opacity-0");
+      return;
+    }
+    try {
+      var response = await fetch("/api/deposit/quote?amount=" + encodeURIComponent(amount));
+      if (!response.ok) return;
+      var data = await response.json();
+      if (withdrawRateInfo) {
+        withdrawRateInfo.textContent = "Cotação PTAX: 1 USD = " + formatBRL(data.ptax_rate);
+        withdrawRateInfo.classList.remove("opacity-0");
+      }
+      if (withdrawConversionInfo) {
+        withdrawConversionInfo.textContent = "Conversão estimada: " + formatUSD(data.amount_usd) + " ≈ " + formatBRL(data.amount_brl);
+        withdrawConversionInfo.classList.remove("opacity-0");
+      }
+    } catch (e) {
+      if (withdrawRateInfo) withdrawRateInfo.textContent = "Cotação PTAX: indisponível no momento";
+    }
+  }
+
+  var withdrawDebounceTimer = null;
+  withdrawAmountInput && withdrawAmountInput.addEventListener("input", function() {
+    if (withdrawDebounceTimer) clearTimeout(withdrawDebounceTimer);
+    withdrawDebounceTimer = setTimeout(updateWithdrawQuote, 250);
+  });
+
+  submitDepositBtn && submitDepositBtn.addEventListener("click", async function() {
+    var amount = Number(depositAmountInput ? depositAmountInput.value : 0);
+    if (!amount || amount < 1) {
+      window.showToast && window.showToast("Informe um valor válido (mínimo US$ 1).", "error");
+      return;
+    }
+    submitDepositBtn.disabled = true;
+    try {
+      var response = await fetch("/api/deposit/mercadopago", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amount }),
+      });
+      if (!response.ok) {
+        var message = await (window.extractApiErrorMessage ? window.extractApiErrorMessage(response, "Não conseguimos iniciar seu depósito agora.") : Promise.resolve("Erro ao iniciar depósito."));
+        window.showToast && window.showToast(message, "error");
+        return;
+      }
+      var data = await response.json();
+      if (!data.checkout_url) {
+        window.showToast && window.showToast("Gateway não retornou URL de checkout.", "error");
+        return;
+      }
+      window.location.href = data.checkout_url;
+    } catch (e) {
+      window.handleNetworkError && window.handleNetworkError("Falha de conexão ao iniciar o depósito.");
+    } finally {
+      submitDepositBtn.disabled = false;
+    }
+  });
+
+  withdrawalForm && withdrawalForm.addEventListener("submit", async function(e) {
+    e.preventDefault();
+    var amount = Number(withdrawAmountInput ? withdrawAmountInput.value : 0);
+    var available = Number(availableBalanceInput ? availableBalanceInput.value : 0);
+    if (!amount || amount <= 0) {
+      window.showToast && window.showToast("Informe um valor válido para o saque.", "error");
+      return;
+    }
+    if (amount > available) {
+      window.showToast && window.showToast("Saldo insuficiente para este saque.", "error");
+      return;
+    }
+    var submitBtn = withdrawalForm.querySelector('button[type="submit"]');
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      var formData = new FormData(withdrawalForm);
+      var response = await fetch(withdrawalForm.action, { method: "POST", body: formData });
+      if (response.status === 401) { window.location.href = "/login"; return; }
+      if (!response.ok) {
+        var message = await (window.extractApiErrorMessage ? window.extractApiErrorMessage(response, "Não foi possível processar seu saque agora.") : Promise.resolve("Erro ao processar saque."));
+        window.showToast && window.showToast(message, "error");
+        return;
+      }
+      window.showToast && window.showToast("Solicitação de saque enviada com sucesso!");
+      window.location.reload();
+    } catch (e) {
+      window.handleNetworkError && window.handleNetworkError("Falha de conexão ao solicitar saque.");
+    } finally {
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+})();
+
 (function() {
   const offersData = [
     {% for offer in offers %}
     {
       id: {{ offer.id }},
       tournamentId: {{ offer.tournament.id }},
-      nome: {{ offer.tournament.nome|tojson }},
-      sala: {{ (offer.tournament.plataforma or offer.tournament.sharkscope_id or "Sala não informada")|tojson }},
+      nome: {{ offer.tournament.nome|tojson|safe }},
+      sala: {{ (offer.tournament.plataforma or offer.tournament.sharkscope_id or "Sala não informada")|tojson|safe }},
       buyin: {{ offer.tournament.buyin }},
-      dataHora: {{ (offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "—")|tojson }},
-      status: {{ offer.tournament.status|tojson }},
-      escrowStatus: {{ offer.escrow_status|tojson }},
+      dataHora: {{ (offer.tournament.data_hora.strftime("%d/%m/%Y %H:%M") if offer.tournament.data_hora else "—")|tojson|safe }},
+      dataHoraISO: {{ (offer.tournament.data_hora.strftime('%Y-%m-%dT%H:%M') if offer.tournament.data_hora else '')|tojson|safe }},
+      status: {{ offer.tournament.status|tojson|safe }},
+      escrowStatus: {{ (offer.escrow_status or "")|tojson|safe }},
       totalPct: {{ offer.total_disponivel_pct }},
       vendidoPct: {{ offer.vendido_pct }},
+      progressSalePct: {{ offer.progress_sale_pct }},
+      markup: {{ offer.markup }},
       hasResult: {{ 'true' if offer.tournament.id in has_result_ids else 'false' }},
+      resultStatus: {{ (result_map.get(offer.tournament.id).review_status|tojson|safe) if result_map and offer.tournament.id in has_result_ids else 'null' }},
+      valorPremio: {{ (result_map.get(offer.tournament.id).valor_premio|float) if result_map and offer.tournament.id in has_result_ids else 0 }},
       investments: [
         {% for inv in offer.investments %}
-        { nome: {{ (inv.backer.nome if inv.backer else "Usuário #" ~ inv.backer_id)|tojson }}, pct: {{ inv.pct_comprada }}, amount: {{ inv.valor_investido }} }{% if not loop.last %},{% endif %}
+        { nome: {{ (inv.backer.nome if inv.backer else "Usuário #" ~ inv.backer_id)|tojson|safe }}, pct: {{ inv.pct_comprada }}, amount: {{ inv.valor_investido }} }{% if not loop.last %},{% endif %}
         {% endfor %}
       ]
     }{% if not loop.last %},{% endif %}
@@ -254,63 +993,247 @@
     const id = parseInt(offerId, 10);
     const offer = offersData.find(function(o) { return o.id === id; });
     if (!offer) return;
+
     if (titleEl) titleEl.textContent = offer.nome;
-    body.innerHTML = "<p class=\"text-gray-500\">Sala: " + (offer.sala || "") + "</p>" +
-      "<p class=\"font-mono\">Buy-in US$ " + (Number(offer.buyin).toFixed(2)) + "</p>" +
-      "<p class=\"text-gray-500\">Data/hora: " + (offer.dataHora || "—") + "</p>" +
-      "<p>Status: <span class=\"text-emerald-400\">" + (offer.status || "") + "</span> · Escrow: <span class=\"text-emerald-400\">" + (offer.escrowStatus || "") + "</span></p>" +
-      "<p>" + (offer.vendidoPct || 0) + "% vendido de " + (offer.totalPct || 0) + "%</p>" +
-      (offer.investments && offer.investments.length ? "<p class=\"text-gray-500 mt-2\">Apoiadores:</p><ul class=\"list-disc list-inside text-gray-400\">" +
-        offer.investments.map(function(i) { return "<li>" + (i.nome || "") + " · " + (i.pct || 0) + "% · US$ " + (Number(i.amount).toFixed(2)) + "</li>"; }).join("") + "</ul>" : "<p class=\"text-gray-500\">Sem aportes ainda.</p>");
-    actions.innerHTML = "";
-    const card = document.querySelector(".player-offer-card[data-offer-id=\"" + id + "\"]");
-    if (card) {
-      const forms = card.querySelectorAll("form");
-      forms.forEach(function(form) {
-        const clone = form.cloneNode(true);
-        clone.classList.add("w-full");
-        var btnClone = clone.querySelector("button[type=submit]");
-        if (btnClone) { btnClone.classList.add("w-full", "px-3", "py-2", "rounded-lg"); }
-        actions.appendChild(clone);
-      });
+    
+    // 1. Render Details Body
+    let bodyHtml = `
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
+          <p class="text-[10px] text-gray-500 uppercase font-black">Buy-in</p>
+          <p class="text-white font-mono font-bold mt-1">US$ ${Number(offer.buyin).toFixed(2)}</p>
+        </div>
+        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
+          <p class="text-[10px] text-gray-500 uppercase font-black">Markup</p>
+          <p class="text-white font-mono font-bold mt-1">${offer.markup}</p>
+        </div>
+        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
+          <p class="text-[10px] text-gray-500 uppercase font-black">Vendido (Meta)</p>
+          <p class="text-emerald-400 font-mono font-bold mt-1">${Number(offer.progressSalePct).toFixed(1)}%</p>
+          <p class="text-[9px] text-gray-500 font-mono mt-0.5">${offer.vendidoPct}% / ${offer.totalPct}% total</p>
+        </div>
+        <div class="bg-white/5 p-3 rounded-xl border border-white/5">
+          <p class="text-[10px] text-gray-500 uppercase font-black">Status</p>
+          <div class="flex flex-col gap-1 mt-1">
+            <p class="text-white font-bold">${offer.status}</p>
+            ${offer.hasResult ? (function() {
+              let label = "Pendente";
+              let colorClasses = "bg-amber-500/20 text-amber-500 border-amber-500/30";
+              if (offer.resultStatus === 'APPROVED') {
+                label = "Aprovado";
+                colorClasses = "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+              } else if (offer.resultStatus === 'REJECTED') {
+                label = "Rejeitado";
+                colorClasses = "bg-red-500/20 text-red-500 border-red-500/30";
+              } else if (offer.resultStatus === 'UNDER_REVIEW') {
+                label = "Em Revisão";
+                colorClasses = "bg-blue-500/20 text-blue-400 border-blue-500/30";
+              }
+              return `<span class="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border w-max ${colorClasses}">${label}${offer.resultStatus === 'APPROVED' ? ' · US$ ' + Number(offer.valorPremio).toFixed(2) : ''}</span>`;
+            })() : ''}
+          </div>
+        </div>
+      </div>
+
+      <div class="space-y-3">
+        <h4 class="text-[10px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
+          <i data-lucide="users" class="w-3 h-3"></i> Apoiadores e Investimentos
+        </h4>
+        <div class="bg-black/40 rounded-xl border border-white/5 divide-y divide-white/5">
+          ${offer.investments && offer.investments.length > 0 ? 
+            offer.investments.map(function(i) { return `
+              <div class="px-4 py-3 flex justify-between items-center hover:bg-white/[0.02]">
+                <div>
+                  <p class="text-xs font-bold text-white">${i.nome}</p>
+                  <p class="text-[10px] text-gray-500 uppercase font-mono">${i.pct}% da cota</p>
+                </div>
+                <p class="text-sm font-mono text-emerald-400 font-bold">US$ ${Number(i.amount).toFixed(2)}</p>
+              </div>
+            `; }).join('') : 
+            `<div class="p-6 text-center text-gray-600 text-xs italic">Nenhum aporte realizado até o momento.</div>`
+          }
+        </div>
+      </div>
+    `;
+
+    // 2. Render Edit Form if applicable
+    const hasInvestments = offer.investments && offer.investments.length > 0;
+    const canEdit = offer.status === "Aberto" && !hasInvestments;
+
+    if (canEdit) {
+      bodyHtml += `
+        <div class="pt-6 border-t border-white/5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h4 class="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2">
+              <i data-lucide="pencil-line" class="w-3 h-3 text-emerald-400"></i> Editar Oferta
+            </h4>
+            <span class="text-[9px] text-emerald-400/50 uppercase font-bold">Edição habilitada</span>
+          </div>
+          <form action="/player/offers/${id}/update" method="post" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Nome</label>
+              <input name="tournament_name" value="${offer.nome}" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Sala</label>
+              <select name="room" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 transition-colors">
+                {% for room in supported_rooms %}
+                <option value="{{ room }}" ${offer.sala === '{{ room }}' ? 'selected' : ''}>{{ room }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Buy-in (US$)</label>
+              <input name="buyin" type="number" step="0.01" value="${offer.buyin}" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Início</label>
+              <input name="start_time" type="datetime-local" value="${offer.dataHoraISO}" class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Markup</label>
+              <input name="markup" type="number" step="0.01" value="${offer.markup}" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="space-y-1.5">
+              <label class="text-[9px] font-bold uppercase text-gray-500 ml-1">Total (%)</label>
+              <input name="total_pct" type="number" step="0.01" value="${offer.totalPct}" required class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-emerald-400 transition-colors" />
+            </div>
+            <div class="md:col-span-2 pt-2">
+              <button type="submit" class="w-full py-2.5 rounded-lg bg-emerald-500 text-black font-black uppercase tracking-tighter text-xs hover:bg-emerald-400 transition-all shadow-lg shadow-emerald-500/10 active:scale-[0.98]">Salvar Alterações</button>
+            </div>
+          </form>
+        </div>
+      `;
+    } else {
+      let lockReason = "Torneio já iniciado ou finalizado.";
+      if (offer.status === "Aberto" && hasInvestments) {
+        lockReason = "Não é possível editar condições de venda pois já existem investidores na oferta.";
+      }
+      
+      bodyHtml += `
+        <div class="pt-6 border-t border-white/5 space-y-3">
+          <div class="p-4 rounded-xl bg-amber-500/5 border border-amber-500/10 flex items-start gap-3">
+            <i data-lucide="lock" class="w-4 h-4 text-amber-500 mt-0.5"></i>
+            <div>
+              <p class="text-[10px] text-amber-500 uppercase font-black">Edição Bloqueada</p>
+              <p class="text-xs text-gray-400 mt-1">${lockReason}</p>
+            </div>
+          </div>
+        </div>
+      `;
     }
 
-    // Ação rápida para informar resultado da partida
+    // 3. Render Result Form or actions
     if (offer.status !== "Aberto" && !offer.hasResult) {
-      const resultForm = document.createElement("form");
-      resultForm.method = "get";
-      resultForm.action = "/player/results/new";
-      const hidden = document.createElement("input");
-      hidden.type = "hidden";
-      hidden.name = "tournament_id";
-      hidden.value = String(offer.tournamentId);
-      resultForm.appendChild(hidden);
-      const btn = document.createElement("button");
-      btn.type = "submit";
-      btn.className = "w-full px-3 py-2 rounded-lg bg-amber-500/20 border border-amber-400/60 text-amber-200 text-sm font-semibold hover:bg-amber-500/30 mt-2";
-      btn.textContent = "Informar resultado da partida";
-      resultForm.appendChild(btn);
-      actions.appendChild(resultForm);
+      bodyHtml += `
+        <div class="pt-6 border-t border-white/5 space-y-4">
+          <h4 class="text-[10px] font-black uppercase tracking-widest text-amber-500 flex items-center gap-2">
+            <i data-lucide="award" class="w-3 h-3"></i> Informar Resultado da Partida
+          </h4>
+          <form action="/player/results" method="post" class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-500/5 p-4 rounded-xl border border-amber-500/10 relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent pointer-events-none"></div>
+            
+            <input type="hidden" name="tournament_id" value="${offer.tournamentId}" />
+            <input type="hidden" name="embed" value="inline" />
+            
+            <div class="space-y-1.5 relative">
+              <label class="text-[9px] font-bold uppercase text-amber-500/80 ml-1">Posição Final</label>
+              <input name="posicao_final" type="number" min="1" required class="w-full bg-black/40 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-gray-600" placeholder="Ex: 1" />
+            </div>
+            
+            <div class="space-y-1.5 relative">
+              <label class="text-[9px] font-bold uppercase text-amber-500/80 ml-1">Prêmio Ganho (US$)</label>
+              <input name="valor_premio" type="number" step="0.01" min="0" required class="w-full bg-black/40 border border-amber-500/20 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-amber-500 transition-colors placeholder:text-gray-600" placeholder="0.00" />
+            </div>
+            
+            <div class="md:col-span-2 pt-2 relative">
+              <button type="submit" class="w-full py-3 rounded-lg bg-amber-500 text-black font-black uppercase tracking-tighter text-xs hover:bg-amber-400 transition-all shadow-lg shadow-amber-500/20 active:scale-[0.98]">
+                Enviar Resultado para Revisão
+              </button>
+              <p class="text-[9px] text-amber-500/60 text-center mt-2 font-bold uppercase tracking-wider">O administrador revisará os dados informados.</p>
+            </div>
+          </form>
+        </div>
+      `;
+    } else if (offer.hasResult) {
+      bodyHtml += `
+        <div class="pt-6 border-t border-white/5 space-y-3">
+          <div class="p-4 rounded-xl bg-blue-500/5 border border-blue-500/10 flex items-start gap-3">
+            <i data-lucide="info" class="w-4 h-4 text-blue-500 mt-0.5"></i>
+            <div>
+              <p class="text-[10px] text-blue-500 uppercase font-black">Resultado Enviado</p>
+              <p class="text-xs text-gray-400 mt-1">O resultado desta partida já foi informado. Você pode conferir o histórico no painel geral.</p>
+            </div>
+          </div>
+        </div>
+      `;
     }
+
+    body.innerHTML = bodyHtml;
+
+    // 4. Render Footer Actions
+    let actionsHtml = "";
+
+    if (offer.investments && offer.investments.length > 0 && offer.status === "Aberto" && offer.escrowStatus !== "REFUNDED") {
+       if (offer.escrowStatus === "COMPLETE") {
+         actionsHtml += `
+          <form method="post" action="/player/offers/${id}/confirm-play" class="w-full">
+            <button type="submit" class="w-full px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs uppercase transition-all flex items-center justify-center gap-2">
+              <i data-lucide="play" class="w-4 h-4"></i> Confirmar Jogo (Liberar Escrow)
+            </button>
+          </form>
+         `;
+       } else if (offer.escrowStatus === "COLLECTING") {
+         actionsHtml += `
+          <form method="post" action="/player/offers/${id}/confirm-play" class="w-full">
+            <input type="hidden" name="force_partial" value="1" />
+            <button type="submit" class="w-full px-4 py-3 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 font-bold text-xs uppercase transition-all flex items-center justify-center gap-2">
+              <i data-lucide="play-circle" class="w-4 h-4"></i> Iniciar Parcial
+            </button>
+          </form>
+         `;
+       }
+       actionsHtml += `
+        <form method="post" action="/player/offers/${id}/decline-play" class="w-full">
+          <button type="submit" class="w-full px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 hover:bg-red-500/20 font-bold text-xs uppercase transition-all flex items-center justify-center gap-2">
+            <i data-lucide="undo-2" class="w-4 h-4"></i> Não vou jogar (Estornar)
+          </button>
+        </form>
+       `;
+    }
+
+    actions.innerHTML = actionsHtml;
+    if (window.lucide) lucide.createIcons();
+
     if (modal) {
       modal.classList.remove("hidden");
+      setTimeout(() => {
+        const content = document.getElementById("playerOfferModalContent");
+        content.classList.remove("scale-95", "opacity-0");
+        content.classList.add("scale-100", "opacity-100");
+      }, 10);
       modal.setAttribute("aria-hidden", "false");
     }
   }
+
   function closeModal() {
     if (modal) {
-      modal.classList.add("hidden");
-      modal.setAttribute("aria-hidden", "true");
+      const content = document.getElementById("playerOfferModalContent");
+      content.classList.add("scale-95", "opacity-0");
+      content.classList.remove("scale-100", "opacity-100");
+      setTimeout(() => {
+        modal.classList.add("hidden");
+        modal.setAttribute("aria-hidden", "true");
+      }, 300);
     }
   }
 
   var listEl = document.getElementById("player-offers-list");
   if (listEl) {
     listEl.addEventListener("click", function(e) {
-      var btn = e.target.closest(".player-offer-details");
-      if (!btn) return;
-      e.preventDefault();
-      var offerId = btn.getAttribute("data-offer-id");
+      var row = e.target.closest(".tournament-row");
+      if (!row) return;
+      var offerId = row.getAttribute("data-offer-id");
       if (offerId) openDetailsModal(offerId);
     });
   }
