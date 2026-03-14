@@ -101,9 +101,10 @@ def _resolve_price_from_brl(amount_brl: float) -> tuple[str, str]:
 
 
 async def create_order(amount_brl: float, user_email: str) -> dict[str, Any]:
-    callback_url = _get_redirect_url("COINGATE_CALLBACK_URL", "http://localhost:8000/webhooks/coingate")
-    success_url = _get_redirect_url("COINGATE_SUCCESS_URL", "http://localhost:8000/dashboard")
-    cancel_url = _get_redirect_url("COINGATE_CANCEL_URL", "http://localhost:8000/dashboard")
+    base_url = _resolve_env_value("BASE_URL", "http://localhost:8000")
+    callback_url = _get_redirect_url("COINGATE_CALLBACK_URL", f"{base_url}/webhooks/coingate")
+    success_url = _get_redirect_url("COINGATE_SUCCESS_URL", f"{base_url}/dashboard")
+    cancel_url = _get_redirect_url("COINGATE_CANCEL_URL", f"{base_url}/dashboard")
     price_amount, price_currency = _resolve_price_from_brl(amount_brl)
     payload = {
         "price_amount": price_amount,
