@@ -946,6 +946,7 @@ def approve_result(
             action_url="/dashboard",
         )
 
+    db.commit()
     url = "/admin/results"
     if embed == "1":
         url += "?embed=1"

@@ -734,6 +734,7 @@ async def invest(request: Request, db: Session = Depends(get_db)):
         lucro_recebido=Decimal("0"),
     )
     db.add(investment)
+    db.flush()
     sync_offer_escrow(db, offer)
     db.commit()
     return {"success": True}
@@ -921,6 +922,7 @@ async def bid_respond(
         lucro_recebido=Decimal("0"),
     )
     db.add(investment)
+    db.flush()
     bid.status = "ACCEPTED"
     sync_offer_escrow(db, offer)
     db.commit()
