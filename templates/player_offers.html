@@ -95,11 +95,30 @@
     <h1 class="font-title text-2xl uppercase">Criar nova oferta</h1>
     <p class="text-gray-300 text-sm">Publique seus torneios em USD e defina o markup.</p>
   </div>
+  {% if user.is_blocked %}
+  <div class="relative overflow-hidden rounded-2xl border border-red-500/30 bg-gradient-to-br from-red-500/15 via-red-500/5 to-transparent p-5 shadow-[0_0_40px_rgba(239,68,68,0.12)]">
+    <div class="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-red-500/15 blur-2xl pointer-events-none"></div>
+    <div class="relative flex items-start gap-3">
+      <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-red-500/40 bg-red-500/20 text-red-300">
+        <i data-lucide="shield-alert" class="h-4 w-4"></i>
+      </div>
+      <div class="space-y-1.5">
+        <p class="text-[11px] font-black uppercase tracking-[0.16em] text-red-300">Criação de oferta temporariamente bloqueada</p>
+        <p class="text-sm text-red-100/90">
+          {{ user.blocked_reason or "Sua conta está bloqueada no momento. Regularize sua situação para criar novas ofertas." }}
+        </p>
+        <p class="text-[11px] uppercase tracking-wider text-red-300/80">Após regularizar, atualize a página para voltar a publicar torneios.</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
   <form
     action="/player/offers"
     method="post"
-    class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 space-y-8 shadow-2xl"
+    class="bg-[#0a0a0a] border border-white/5 rounded-3xl p-6 lg:p-8 space-y-8 shadow-2xl {% if user.is_blocked %}opacity-60{% endif %}"
+    {% if user.is_blocked %}onsubmit="return false;"{% endif %}
   >
+    <fieldset {% if user.is_blocked %}disabled{% endif %} class="space-y-8">
     <!-- Section 1: Tournament Info -->
     <div class="space-y-6">
       <div class="flex items-center gap-2 pb-2 border-b border-white/5">
@@ -225,13 +244,14 @@
     <div class="pt-4">
       <button
         type="submit"
-        class="w-full px-6 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-widest text-xs transition-all shadow-[0_4px_20px_rgba(16,185,129,0.2)] hover:shadow-[0_8px_30px_rgba(16,185,129,0.4)] active:scale-[0.98] flex items-center justify-center gap-2"
+        class="w-full px-6 py-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-black uppercase tracking-widest text-xs transition-all shadow-[0_4px_20px_rgba(16,185,129,0.2)] hover:shadow-[0_8px_30px_rgba(16,185,129,0.4)] active:scale-[0.98] flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-300 disabled:shadow-none"
       >
         <i data-lucide="rocket" class="w-4 h-4"></i>
-        Publicar minha oferta
+        {% if user.is_blocked %}Criação bloqueada{% else %}Publicar minha oferta{% endif %}
       </button>
       </p>
     </div>
+    </fieldset>
   </form>
   </div>
 
