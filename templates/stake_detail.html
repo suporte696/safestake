@@ -4,16 +4,29 @@
 
 {% block content %}
 <section class="max-w-6xl mx-auto">
-  <!-- Success Notification -->
+  <!-- Success Notification (inline, shown during fetch) -->
   <div id="successMessage" class="hidden mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3 text-emerald-400 shadow-lg shadow-emerald-500/5 animate-in fade-in slide-in-from-top-4 duration-500">
     <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
       <i data-lucide="check-circle" class="w-6 h-6"></i>
     </div>
     <div>
       <p class="font-bold text-sm uppercase tracking-wider">Apoio Confirmado!</p>
-      <p class="text-xs text-emerald-400/80">Seu investimento foi processado com sucesso. A página será atualizada em instantes.</p>
+      <p class="text-xs text-emerald-400/80">Seu investimento foi processado com sucesso. Você será redirecionado em instantes.</p>
     </div>
   </div>
+
+  <!-- Persistent success banner (shown after reload when user already invested) -->
+  {% if user_investment %}
+  <div class="mb-6 p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-3 text-emerald-400 shadow-lg shadow-emerald-500/5">
+    <div class="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+      <i data-lucide="check-circle" class="w-6 h-6"></i>
+    </div>
+    <div>
+      <p class="font-bold text-sm uppercase tracking-wider">Apoio Registrado com Sucesso!</p>
+      <p class="text-xs text-emerald-400/80">Você investiu US$ {{ "%.2f"|format(user_investment.amount) }} ({{ user_investment.pct }}%) nesta oferta.</p>
+    </div>
+  </div>
+  {% endif %}
 
   <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
     <!-- Coluna Esquerda: Informações e Status -->
@@ -184,9 +197,10 @@
               <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-400 font-mono font-bold text-sm">$</span>
               <input
                 id="investmentAmount"
-                type="number"
-                min="0.01"
-                step="0.01"
+                type="text"
+                inputmode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
+                autocomplete="off"
                 placeholder="0.00"
                 {% if not offer.can_support %}disabled{% endif %}
                 class="w-full bg-white/5 border border-white/10 rounded-xl pl-7 pr-4 py-3 text-white font-mono focus:outline-none focus:border-emerald-400 transition-all text-sm disabled:opacity-50 disabled:cursor-not-allowed"
@@ -268,10 +282,11 @@
           <label class="text-xs text-gray-400 block mb-1">Valor (US$)</label>
           <input
             id="bidAmount"
-            type="number"
-            step="0.01"
-            min="0.01"
-            placeholder="0,00"
+            type="text"
+            inputmode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*"
+            autocomplete="off"
+            placeholder="0.00"
             class="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
           />
         </div>
@@ -279,9 +294,10 @@
           <label class="text-xs text-gray-400 block mb-1">Markup desejado (ex: 1.05)</label>
           <input
             id="bidMarkup"
-            type="number"
-            step="0.01"
-            min="0.5"
+            type="text"
+            inputmode="decimal"
+            pattern="[0-9]*[.,]?[0-9]*"
+            autocomplete="off"
             placeholder="1.00"
             class="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-400"
           />
@@ -311,13 +327,13 @@
 <script>
   const offerId = {{ offer.id if offer else "null" }};
   const userInvestmentId = {{ user_investment.id if user_investment else "null" }};
-  const buyin = Number("{{ offer.buyin if offer else 0 }}");
-  const markup = Number("{{ offer.markup if offer else 1 }}");
-  const totalPct = Number("{{ offer.total_pct if offer else 0 }}");
-  const soldPct = Number("{{ offer.sold_pct if offer else 0 }}");
+  const buyin = Number("{{ (offer.buyin|float) if offer else 0 }}");
+  const markup = Number("{{ (offer.markup|float) if offer else 1 }}");
+  const totalPct = Number("{{ (offer.total_pct|float) if offer else 0 }}");
+  const soldPct = Number("{{ (offer.sold_pct|float) if offer else 0 }}");
   const canSupport = {{ "true" if offer and offer.can_support else "false" }};
   const hasWallet = {{ "true" if wallet else "false" }};
-  const walletAvailable = Number("{{ wallet.saldo_disponivel if wallet else 0 }}");
+  const walletAvailable = Number("{{ (wallet.saldo_disponivel|float) if wallet else 0 }}");
   const availablePct = Math.max(0, totalPct - soldPct);
   
   const maxOfferAmount = (buyin > 0 && markup > 0) ? ((buyin * markup * availablePct) / 100) : 0;
@@ -336,10 +352,22 @@
     return `US$ ${Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  // Helper: lê o valor do input normalizando vírgula → ponto (Android BR usa vírgula)
+  const parseInputValue = (el) => {
+    if (!el || !el.value) return 0;
+    const raw = String(el.value).replace(",", ".");
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  const EPSILON = 0.005; // Tolerância para comparação de ponto flutuante
+
   const clampToMax = (value) => {
     if (!Number.isFinite(value)) return 0;
     if (value <= 0) return 0;
-    return Math.min(value, maxInvestAmount);
+    // Usa tolerância: se o valor está dentro de EPSILON do máximo, aceita
+    if (value <= maxInvestAmount + EPSILON) return Math.min(value, maxInvestAmount);
+    return maxInvestAmount;
   };
 
   const validateAmount = (amount) => {
@@ -352,7 +380,8 @@
     if (!maxOfferAmount || maxOfferAmount <= 0 || availablePct <= 0) {
       return { valid: false, reason: "Cota esgotada." };
     }
-    if (amount > maxOfferAmount) {
+    // Tolerância para evitar falso positivo por imprecisão de ponto flutuante
+    if (amount > maxOfferAmount + EPSILON) {
       return {
         valid: false,
         reason: `Máximo: ${formatUSD(maxOfferAmount)}`,
@@ -362,7 +391,7 @@
   };
 
   const updateEstimate = () => {
-    const amount = Number(input.value || 0);
+    const amount = parseInputValue(input);
     const validation = validateAmount(amount);
     
     if (!validation.valid || !buyin || !markup) {
@@ -406,8 +435,8 @@
     }
   };
 
-  if (input) {
-    input.max = maxInvestAmount > 0 ? String(maxInvestAmount.toFixed(2)) : "0";
+  if (input && maxInvestAmount > 0) {
+    input.setAttribute("data-max", maxInvestAmount.toFixed(2));
   }
   
   if (investmentMaxHint) {
@@ -419,8 +448,9 @@
   }
 
   const normalizeInputToOfferLimit = () => {
-    const amount = Number(input?.value || 0);
+    const amount = parseInputValue(input);
     if (!amount || amount <= 0) return;
+    if (maxInvestAmount <= 0) return; // guard: não resetar se o máximo é inválido
     const normalized = clampToMax(amount);
     if (normalized !== amount && input) {
       input.value = normalized.toFixed(2);
@@ -428,8 +458,18 @@
     }
   };
 
-  input?.addEventListener("input", updateEstimate);
+  input?.addEventListener("input", () => {
+    // Filtra caracteres inválidos em tempo real (só dígitos, ponto e vírgula)
+    if (input.value) {
+      input.value = input.value.replace(/[^0-9.,]/g, "");
+    }
+    updateEstimate();
+  });
   input?.addEventListener("blur", () => {
+    // Ao sair do campo, normaliza vírgula para ponto visualmente
+    if (input.value && input.value.includes(",")) {
+      input.value = input.value.replace(",", ".");
+    }
     normalizeInputToOfferLimit();
     updateEstimate();
   });
@@ -441,7 +481,7 @@
       window.showToast("Esta oferta não aceita mais apoios.", "error");
       return;
     }
-    const amount = Number(input.value || 0);
+    const amount = parseInputValue(input);
     if (!offerId) {
       window.showToast("Oferta inválida.", "error");
       return;
@@ -473,7 +513,7 @@
       if (input) input.disabled = true;
       
       setTimeout(() => {
-        window.location.reload();
+        window.location.href = "/";
       }, 3000);
     } catch (error) {
       window.handleNetworkError("Falha de conexão ao confirmar o apoio.");

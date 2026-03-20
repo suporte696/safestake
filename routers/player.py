@@ -138,6 +138,8 @@ async def submit_player_result(
         )
     
     if offer.tournament.status != "Cancelado":
+        from routers.escrow import force_complete_and_release_escrow
+        force_complete_and_release_escrow(db, offer)
         offer.tournament.status = "Finalizado"
 
     if user.is_blocked and user.blocked_reason and "resultado" in user.blocked_reason.lower():

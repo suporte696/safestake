@@ -15,6 +15,7 @@ from routers.auth import ensure_admin_user, fetch_current_user
 router = APIRouter()
 logger = logging.getLogger(__name__)
 MONEY_Q = Decimal("0.01")
+PCT_Q = Decimal("0.0001")
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
@@ -38,6 +39,11 @@ def _ensure_wallet(db: Session, user_id: int, with_lock: bool = False) -> Wallet
 
 def q_money(value: Decimal) -> Decimal:
     return Decimal(value).quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
+def q_pct(value: Decimal) -> Decimal:
+    """Arredonda percentuais para 4 casas decimais."""
+    return Decimal(value).quantize(PCT_Q, rounding=ROUND_HALF_UP)
 
 
 def get_offer_escrow_locked(db: Session, offer: StakeOffer) -> TournamentEscrow:

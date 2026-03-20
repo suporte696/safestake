@@ -16,6 +16,7 @@ from routers.auth import ensure_user_not_blocked, fetch_current_user, is_user_ky
 from routers.escrow import (
     force_complete_and_release_escrow,
     q_money,
+    q_pct,
     refund_offer_escrow,
     release_offer_escrow_to_player,
     sync_offer_escrow,
@@ -828,13 +829,13 @@ async def invest(request: Request, db: Session = Depends(get_db)):
     sum_sold = db.execute(
         select(func.coalesce(func.sum(Investment.pct_comprada), 0)).where(Investment.offer_id == offer.id)
     ).scalar_one()
-    sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    sold_pct = q_pct(Decimal(str(sum_sold or 0)))
     available_pct = total_pct - sold_pct
 
     if buyin <= 0 or markup <= 0:
         raise HTTPException(status_code=400, detail="Buy-in ou markup inválido nesta oferta. Tente novamente mais tarde.")
     share_pct = (amount / (buyin * markup)) * Decimal("100")
-    share_pct = q_money(share_pct)
+    share_pct = q_pct(share_pct)
     if share_pct <= 0:
         raise HTTPException(status_code=400, detail="Valor do apoio resulta em percentual inválido.")
     if share_pct > available_pct + Decimal("0.01"):
@@ -843,11 +844,12 @@ async def invest(request: Request, db: Session = Depends(get_db)):
             detail=f"Não há cota suficiente para esse valor (disponível: {float(available_pct):.1f}%). Recarregue a página e tente novamente.",
         )
 
-    if user.wallet.saldo_disponivel < amount:
+    backer_wallet = ensure_wallet_for_user(db, user.id, with_lock=True)
+    if backer_wallet.saldo_disponivel < amount:
         raise HTTPException(status_code=400, detail="Saldo insuficiente para concluir este apoio.")
 
-    user.wallet.saldo_disponivel = user.wallet.saldo_disponivel - amount
-    user.wallet.saldo_em_jogo = user.wallet.saldo_em_jogo + amount
+    backer_wallet.saldo_disponivel = backer_wallet.saldo_disponivel - amount
+    backer_wallet.saldo_em_jogo = backer_wallet.saldo_em_jogo + amount
     player_wallet = ensure_wallet_for_user(db, offer.player_id, with_lock=True)
     player_wallet.saldo_em_jogo = Decimal(str(player_wallet.saldo_em_jogo or 0)) + amount
     offer.vendido_pct = sold_pct + share_pct
@@ -914,14 +916,14 @@ async def invest_update(request: Request, db: Session = Depends(get_db)):
     if buyin <= 0 or markup <= 0:
         raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
 
-    new_share_pct = q_money((new_amount / (buyin * markup)) * Decimal("100"))
+    new_share_pct = q_pct((new_amount / (buyin * markup)) * Decimal("100"))
     
     # Verifica disponibilidade (meta total)
     sum_sold = db.execute(
         select(func.coalesce(func.sum(Investment.pct_comprada), 0))
         .where(Investment.offer_id == offer.id, Investment.id != investment.id)
     ).scalar_one()
-    others_sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    others_sold_pct = q_pct(Decimal(str(sum_sold or 0)))
     total_pct = Decimal(str(offer.total_disponivel_pct))
     
     if others_sold_pct + new_share_pct > total_pct + Decimal("0.001"):
@@ -954,7 +956,7 @@ async def invest_update(request: Request, db: Session = Depends(get_db)):
         select(func.coalesce(func.sum(Investment.pct_comprada), 0))
         .where(Investment.offer_id == offer.id)
     ).scalar_one()
-    offer.vendido_pct = q_money(Decimal(str(total_sold_pct or 0)))
+    offer.vendido_pct = q_pct(Decimal(str(total_sold_pct or 0)))
 
     # Sincroniza escrow
     from routers.escrow import sync_offer_escrow

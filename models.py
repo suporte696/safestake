@@ -150,8 +150,8 @@ class StakeOffer(Base):
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"))
     player_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     markup: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=1.0)
-    total_disponivel_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=100)
-    vendido_pct: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0)
+    total_disponivel_pct: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=100)
+    vendido_pct: Mapped[Decimal] = mapped_column(Numeric(7, 4), default=0)
     escrow_status: Mapped[str] = mapped_column(
         Enum("COLLECTING", "COMPLETE", "REFUNDED", name="offer_escrow_status"),
         nullable=False,
@@ -195,7 +195,7 @@ class Investment(Base):
     offer_id: Mapped[int] = mapped_column(ForeignKey("stake_offers.id"))
     backer_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     valor_investido: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    pct_comprada: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False)
+    pct_comprada: Mapped[Decimal] = mapped_column(Numeric(7, 4), nullable=False)
     lucro_recebido: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
     payout_status: Mapped[str] = mapped_column(
         Enum("PENDING", "PAID", name="investment_payout_status"),

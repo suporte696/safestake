@@ -31,11 +31,17 @@ templates = Jinja2Templates(directory="templates")
 router = APIRouter()
 FEE_RATE = Decimal("0.08")
 MONEY_Q = Decimal("0.01")
+PCT_Q = Decimal("0.0001")
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 
 def q_money(value: Decimal) -> Decimal:
     return Decimal(value).quantize(MONEY_Q, rounding=ROUND_HALF_UP)
+
+
+def q_pct(value: Decimal) -> Decimal:
+    """Arredonda percentuais para 4 casas decimais."""
+    return Decimal(value).quantize(PCT_Q, rounding=ROUND_HALF_UP)
 
 
 def get_wallet_for_update(db: Session, user_id: int) -> Wallet:
@@ -60,6 +66,47 @@ def get_wallet_for_update(db: Session, user_id: int) -> Wallet:
         ).scalars().first()
     return wallet
 
+
+@router.get("/admin/dev-check-balances")
+def check_balances_dev(db: Session = Depends(get_db)):
+    from datetime import datetime, timedelta, timezone
+    from decimal import Decimal
+    hoje = datetime.now(timezone.utc) - timedelta(hours=48)
+    
+    stmt = (
+        select(Investment, User.nome, Wallet)
+        .join(User, Investment.backer_id == User.id)
+        .join(Wallet, Wallet.user_id == User.id)
+        .where(Investment.created_at >= hoje)
+    )
+    results = db.execute(stmt).all()
+    
+    user_investments = {}
+    for inv, nome, wallet in results:
+        uid = inv.backer_id
+        if uid not in user_investments:
+            user_investments[uid] = {
+                'nome': nome,
+                'wallet_em_jogo': float(wallet.saldo_em_jogo),
+                'wallet_disponivel': float(wallet.saldo_disponivel),
+                'soma_investida_24h': 0.0
+            }
+        user_investments[uid]['soma_investida_24h'] += float(inv.valor_investido)
+        
+    inconsistencias = []
+    for uid, data in user_investments.items():
+        if data['wallet_em_jogo'] < data['soma_investida_24h'] - 0.05:
+            diff = data['soma_investida_24h'] - data['wallet_em_jogo']
+            inconsistencias.append({
+                "user_id": uid,
+                "nome": data['nome'],
+                "saldo_disponivel": data['wallet_disponivel'],
+                "saldo_em_jogo": data['wallet_em_jogo'],
+                "soma_investimentos_ativos": data['soma_investida_24h'],
+                "diferenca_nao_descontada": diff
+            })
+            
+    return {"inconsistencias": inconsistencias}
 
 @router.get("/admin/dashboard", response_class=HTMLResponse)
 async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
@@ -1041,14 +1088,14 @@ async def admin_update_investment(request: Request, db: Session = Depends(get_db
     if buyin <= 0 or markup <= 0:
         raise HTTPException(status_code=400, detail="Dados da oferta inválidos.")
 
-    new_share_pct = q_money((new_amount / (buyin * markup)) * Decimal("100"))
+    new_share_pct = q_pct((new_amount / (buyin * markup)) * Decimal("100"))
     
     # Verifica disponibilidade
     sum_sold = db.execute(
         select(func.coalesce(func.sum(Investment.pct_comprada), 0))
         .where(Investment.offer_id == offer.id, Investment.id != investment.id)
     ).scalar_one()
-    others_sold_pct = q_money(Decimal(str(sum_sold or 0)))
+    others_sold_pct = q_pct(Decimal(str(sum_sold or 0)))
     total_pct = Decimal(str(offer.total_disponivel_pct))
     
     if others_sold_pct + new_share_pct > total_pct + Decimal("0.001"):
@@ -1078,7 +1125,7 @@ async def admin_update_investment(request: Request, db: Session = Depends(get_db
         select(func.coalesce(func.sum(Investment.pct_comprada), 0))
         .where(Investment.offer_id == offer.id)
     ).scalar_one()
-    offer.vendido_pct = q_money(Decimal(str(total_sold_pct or 0)))
+    offer.vendido_pct = q_pct(Decimal(str(total_sold_pct or 0)))
     
     # Sincroniza meta atingida
     from routers.escrow import sync_offer_escrow
