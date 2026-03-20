@@ -78,6 +78,7 @@ def _is_public_https_url(value: str) -> bool:
         return False
     if parsed.scheme.lower() != "https":
         return False
+    host = parsed.hostname or ""
     if not host or host in {"localhost", "127.0.0.1", "::1"}:
         # Allow localhost in development ONLY IF BASE_URL explicitly allows it
         base_url = os.getenv("BASE_URL", "").lower()
