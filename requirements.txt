@@ -1,4 +1,5 @@
-fastapi
+fastapi<0.109.0
+starlette<0.30.0
 uvicorn[standard]
 jinja2
 sqlalchemy
