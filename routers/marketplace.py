@@ -158,16 +158,21 @@ def marketplace(request: Request, db: Session = Depends(get_db)):
         .join(Tournament, StakeOffer.tournament_id == Tournament.id)
         .where(Tournament.status.in_(("Aberto", "Jogando")))
         .where(StakeOffer.escrow_status.in_(("COLLECTING", "COMPLETE")))
-        .where(
-            or_(
-                Tournament.data_hora >= cutoff_time,
-                Tournament.data_hora.is_(None)
-            )
-        )
         .options(joinedload(StakeOffer.player), joinedload(StakeOffer.tournament))
         .order_by(StakeOffer.id.desc())
     )
-    offers = [serialize_offer(item) for item in db.execute(stmt).scalars().all()]
+    
+    try:
+        raw_offers = db.execute(stmt).scalars().all()
+        offers = []
+        for item in raw_offers:
+            t_data_hora = item.tournament.data_hora
+            if t_data_hora and t_data_hora < cutoff_time:
+                continue
+            offers.append(serialize_offer(item))
+    except Exception as e:
+        logger.exception("CRITICAL ERROR NO MARKETPLACE INDEX: %s", e)
+        offers = []
     return templates.TemplateResponse(
         "index.html",
         {
