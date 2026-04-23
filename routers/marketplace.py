@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.orm import Session, joinedload
 
 from constants import SUPPORTED_ROOMS, normalize_supported_room
@@ -159,7 +159,10 @@ def marketplace(request: Request, db: Session = Depends(get_db)):
         .where(Tournament.status.in_(("Aberto", "Jogando")))
         .where(StakeOffer.escrow_status.in_(("COLLECTING", "COMPLETE")))
         .where(
-            func.coalesce(Tournament.data_hora, now_sp) >= cutoff_time
+            or_(
+                Tournament.data_hora >= cutoff_time,
+                Tournament.data_hora.is_(None)
+            )
         )
         .options(joinedload(StakeOffer.player), joinedload(StakeOffer.tournament))
         .order_by(StakeOffer.id.desc())
