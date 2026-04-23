@@ -960,9 +960,9 @@ def approve_result(
         )
 
     db.commit()
-    url = "/admin/results"
+    url = "/admin/dashboard?tab=resultados"
     if embed == "1":
-        url += "?embed=1"
+        url += "&embed=1"
     return RedirectResponse(url=url, status_code=303)
 
 

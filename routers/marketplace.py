@@ -150,11 +150,17 @@ def marketplace(request: Request, db: Session = Depends(get_db)):
             "saldo_disponivel": user.wallet.saldo_disponivel,
             "saldo_em_jogo": user.wallet.saldo_em_jogo,
         }
+    now_sp = datetime.now(LOCAL_TZ).replace(tzinfo=None)
+    cutoff_time = now_sp - timedelta(hours=12)
+
     stmt = (
         select(StakeOffer)
         .join(Tournament, StakeOffer.tournament_id == Tournament.id)
         .where(Tournament.status.in_(("Aberto", "Jogando")))
         .where(StakeOffer.escrow_status.in_(("COLLECTING", "COMPLETE")))
+        .where(
+            func.coalesce(Tournament.data_hora, now_sp) >= cutoff_time
+        )
         .options(joinedload(StakeOffer.player), joinedload(StakeOffer.tournament))
         .order_by(StakeOffer.id.desc())
     )
